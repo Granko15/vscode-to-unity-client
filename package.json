@@ -9,28 +9,44 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": ["*"],
   "main": "./out/extension.js",
   "contributes": {
-    "commands": [
-      {
-        "command": "vsc-to-unity-data-transfer.connectToService",
-        "title": "Connect to Python Websocket Service"
-      }
-    ]
+      "commands": [
+          {
+              "command": "vsc-to-unity-data-transfer.basicAstExtractor",
+              "title": "Run Basic AST Extractor"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.varsConstsAstExtractor",
+              "title": "Run AST Extractor with Variables and Constants"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.detailedAstExtractor",
+              "title": "Run Detailed AST Extractor"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.basicAstroidExtractor",
+              "title": "Basic Astroid AST Extractor"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.detailedAstroidExtractor",
+              "title": "Detailed Astroid AST Extractor"
+          }
+      ]
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "vscode:prepublish": "yarn run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "pretest": "npm run compile && npm run lint",
+    "pretest": "yarn run compile && yarn run lint",
     "lint": "eslint src --ext ts",
     "test": "vscode-test"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.6",
     "@types/node": "18.x",
-    "@types/vscode": "^1.94.0",
+    "@types/vscode": "^1.93.1",
     "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^7.7.1",
     "@typescript-eslint/parser": "^7.7.1",

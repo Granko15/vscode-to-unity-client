@@ -1,0 +1,89 @@
+@startuml
+class "Library" as Library {
+    .. Methods ..
+    __init__()
+    add_book()
+    add_member()
+    find_book()
+    find_member()
+    .. File Path ..
+    ../test_project/library/library.py
+}
+Library ..> Book : uses
+Library ..> Member : uses
+class "Member" as Member {
+    .. Methods ..
+    __init__()
+    borrow_book()
+    return_book()
+    .. File Path ..
+    ../test_project/library/member.py
+}
+class "Movie" as Movie {
+    .. Methods ..
+    __init__()
+    .. File Path ..
+    ../test_project/library/cinema.py
+}
+class "CinemaHall" as CinemaHall {
+    .. Attributes ..
+    hall_number
+    capacity
+    booking
+    bookings
+    .. Methods ..
+    __init__()
+    add_booking()
+    .. File Path ..
+    ../test_project/library/cinema.py
+}
+CinemaHall --> Booking : composed of
+CinemaHall ..> Booking : uses
+class "Booking" as Booking {
+    .. Methods ..
+    __init__()
+    .. File Path ..
+    ../test_project/library/cinema.py
+}
+class "Customer" as Customer {
+    .. Methods ..
+    __init__()
+    .. File Path ..
+    ../test_project/library/cinema.py
+}
+class "Animal" as Animal {
+    .. Methods ..
+    __init__()
+    make_sound()
+    .. File Path ..
+    ../test_project/library/animals.py
+}
+class "Dog" as Dog {
+    .. Methods ..
+    __init__()
+    make_sound()
+    .. File Path ..
+    ../test_project/library/animals.py
+}
+Animal <|-- Dog
+class "Owner" as Owner {
+    .. Methods ..
+    __init__()
+    walk_dog()
+    .. File Path ..
+    ../test_project/library/animals.py
+}
+class "Book" as Book {
+    .. Methods ..
+    __init__()
+    borrow()
+    return_book()
+    .. File Path ..
+    ../test_project/library/book.py
+}
+legend left
+| <|-- | Inheritance |
+| -->   | Composition |
+| ..>   | Uses        |
+endlegend
+@enduml
