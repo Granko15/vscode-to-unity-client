@@ -18,7 +18,7 @@ class ProjectAnalyzer(ast.NodeVisitor):
         self.classes[class_name] = {
             "file_path": self.current_file,
             "methods": [],
-            "attributes": set(),  # Use a set to ensure unique attributes
+            "attributes": [],
             "base_classes": bases,
             "composition": set(),
             "uses": set()
@@ -36,43 +36,38 @@ class ProjectAnalyzer(ast.NodeVisitor):
                             for target in stmt.targets:
                                 if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
                                     if target.value.id == "self":  # Attribute assignment to self
-                                        self.classes[class_name]["attributes"].add(target.attr)
+                                        self.classes[class_name]["attributes"].append(target.attr)
 
-                    # Inspect method body for 'uses' relationships
-                    for stmt in item.body:
-                        if isinstance(stmt, ast.Assign):
-                            # Detect composition (e.g., self.books = [])
-                            if isinstance(stmt.targets[0], ast.Attribute) and isinstance(stmt.targets[0].value, ast.Name):
-                                if stmt.targets[0].value.id == "self" and isinstance(stmt.value, ast.Call):
-                                    if isinstance(stmt.value.func, ast.Name):
-                                        self.classes[class_name]["composition"].add(stmt.value.func.id)
+                # Inspect method body for 'uses' relationships
+                for stmt in item.body:
+                    if isinstance(stmt, ast.Assign):
+                        # Detect composition (e.g., self.books = [])
+                        if isinstance(stmt.targets[0], ast.Attribute) and isinstance(stmt.targets[0].value, ast.Name):
+                            if stmt.targets[0].value.id == "self" and isinstance(stmt.value, ast.Call):
+                                if isinstance(stmt.value.func, ast.Name):
+                                    self.classes[class_name]["composition"].add(stmt.value.func.id)
 
-                        elif isinstance(stmt, ast.Expr):
-                            # Detect usage via method calls or attribute access
-                            if isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Name):
-                                self.classes[class_name]["uses"].add(stmt.value.func.id)
-                            elif isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Attribute):
-                                if isinstance(stmt.value.func.value, ast.Name):
-                                    self.classes[class_name]["uses"].add(stmt.value.func.value.id)
+                    elif isinstance(stmt, ast.Expr):
+                        # Detect usage via method calls or attribute access
+                        if isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Name):
+                            self.classes[class_name]["uses"].add(stmt.value.func.id)
+                        elif isinstance(stmt.value, ast.Call) and isinstance(stmt.value.func, ast.Attribute):
+                            if isinstance(stmt.value.func.value, ast.Name):
+                                self.classes[class_name]["uses"].add(stmt.value.func.value.id)
 
-                        # Detect object instantiations
-                        if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
-                            if isinstance(stmt.value.func, ast.Name):  # Direct call, e.g., Book(...)
-                                self.classes[class_name]["uses"].add(stmt.value.func.id)
-                            elif isinstance(stmt.value.func, ast.Attribute):  # Attribute call, e.g., module.Book(...)
-                                if isinstance(stmt.value.func.value, ast.Name):
-                                    self.classes[class_name]["uses"].add(stmt.value.func.attr)
+                    # Detect object instantiations
+                    if isinstance(stmt, ast.Assign) and isinstance(stmt.value, ast.Call):
+                        if isinstance(stmt.value.func, ast.Name):  # Direct call, e.g., Book(...)
+                            self.classes[class_name]["uses"].add(stmt.value.func.id)
+                        elif isinstance(stmt.value.func, ast.Attribute):  # Attribute call, e.g., module.Book(...)
+                            if isinstance(stmt.value.func.value, ast.Name):
+                                self.classes[class_name]["uses"].add(stmt.value.func.attr)
 
             elif isinstance(item, ast.Assign):
                 # Detect class-level attributes
                 for target in item.targets:
                     if isinstance(target, ast.Name):
-                        self.classes[class_name]["attributes"].add(target.id)
-
-        # Convert sets to lists for JSON serialization
-        self.classes[class_name]["attributes"] = list(self.classes[class_name]["attributes"])
-        self.classes[class_name]["composition"] = list(self.classes[class_name]["composition"])
-        self.classes[class_name]["uses"] = list(self.classes[class_name]["uses"])
+                        self.classes[class_name]["attributes"].append(target.id)
 
         self.generic_visit(node)
 
