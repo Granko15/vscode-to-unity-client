@@ -9,6 +9,7 @@ class ProjectAnalyzer(ast.NodeVisitor):
         self.functions = []  # Store standalone functions
         self.imports = []  # Store imported modules
         self.current_file = None  # Track the current file being analyzed
+        self.current_package = None  # Track the current package/module name
 
     def visit_ClassDef(self, node):
         class_name = node.name
@@ -17,8 +18,10 @@ class ProjectAnalyzer(ast.NodeVisitor):
         # Initialize class entry
         self.classes[class_name] = {
             "file_path": self.current_file,
+            "package": self.current_package,
+            "line_number": node.lineno,
             "methods": [],
-            "attributes": [],
+            "attributes": set(),
             "base_classes": bases,
             "composition": set(),
             "uses": set()
@@ -27,7 +30,11 @@ class ProjectAnalyzer(ast.NodeVisitor):
         # Parse class body
         for item in node.body:
             if isinstance(item, ast.FunctionDef):
-                self.classes[class_name]["methods"].append(item.name)
+                # Detect methods
+                self.classes[class_name]["methods"].append({
+                    "name": item.name,
+                    "line_number": item.lineno
+                })
 
                 # Extract attributes from __init__ method
                 if item.name == "__init__":
@@ -36,7 +43,7 @@ class ProjectAnalyzer(ast.NodeVisitor):
                             for target in stmt.targets:
                                 if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Name):
                                     if target.value.id == "self":  # Attribute assignment to self
-                                        self.classes[class_name]["attributes"].append(target.attr)
+                                        self.classes[class_name]["attributes"].add(target.attr)
 
                 # Inspect method body for 'uses' relationships
                 for stmt in item.body:
@@ -67,10 +74,9 @@ class ProjectAnalyzer(ast.NodeVisitor):
                 # Detect class-level attributes
                 for target in item.targets:
                     if isinstance(target, ast.Name):
-                        self.classes[class_name]["attributes"].append(target.id)
+                        self.classes[class_name]["attributes"].add(target.id)
 
         self.generic_visit(node)
-
 
     def visit_FunctionDef(self, node):
         self.functions.append(node.name)
@@ -89,6 +95,10 @@ class ProjectAnalyzer(ast.NodeVisitor):
                 if file.endswith(".py"):
                     file_path = os.path.join(root, file)
                     self.current_file = file_path  # Set the current file
+                    # Determine the package
+                    relative_path = os.path.relpath(file_path, directory)
+                    package_parts = os.path.dirname(relative_path).split(os.sep)
+                    self.current_package = ".".join(part for part in package_parts if part != "")
                     try:
                         with open(file_path, "r", encoding="utf-8") as f:
                             tree = ast.parse(f.read(), filename=file_path)
@@ -102,7 +112,8 @@ class ProjectAnalyzer(ast.NodeVisitor):
             class_name: {
                 **details,
                 "composition": list(details["composition"]),  # Convert set to list
-                "uses": list(details["uses"])  # Convert set to list
+                "uses": list(details["uses"]),  # Convert set to list
+                "attributes": list(details["attributes"])  # Convert set to list
             }
             for class_name, details in self.classes.items()
         }
@@ -118,48 +129,38 @@ class ProjectAnalyzer(ast.NodeVisitor):
         print(f"Class structure saved to {output_file}")
 
     def to_plantuml(self, output_file):
-        with open(output_file, "w", encoding="utf-8") as f:
+        with open(output_file, 'w') as f:
             f.write("@startuml\n")
-            for class_name, details in self.classes.items():
-                # Define the class
+            
+            # Write class definitions
+            for class_name, class_info in self.classes.items():
+                f.write(f'package "{class_info["package"]}" {{\n')
                 f.write(f'class "{class_name}" as {class_name} {{\n')
-                # Add attributes
-                if details["attributes"]:
-                    f.write("    .. Attributes ..\n")
-                    for attr in details["attributes"]:
-                        f.write(f"    {attr}\n")
-                # Add methods
-                if details["methods"]:
-                    f.write("    .. Methods ..\n")
-                    for method in details["methods"]:
-                        f.write(f"    {method}()\n")
-                # Include file path as a note
+                f.write("    .. Attributes ..\n")
+                for attribute in class_info["attributes"]:
+                    f.write(f"    {attribute}\n")
+                f.write("    .. Methods ..\n")
+                for method in class_info["methods"]:
+                    f.write(f"    {method['name']}() [line: {method['line_number']}]\n")
                 f.write("    .. File Path ..\n")
-                f.write(f"    {details['file_path']}\n")
+                f.write(f"    {class_info['file_path']}\n")
+                f.write("    .. Line Number ..\n")
+                f.write(f"    {class_info['line_number']}\n")
+                f.write("}\n")
                 f.write("}\n")
                 
-                # Add inheritance relationships
-                for base in details["base_classes"]:
-                    f.write(f"{base} <|-- {class_name}\n")
-                
-                # Add composition relationships
-                for comp in details["composition"]:
-                    f.write(f"{class_name} --> {comp} : composed of\n")
-                
-                # Add usage relationships
-                for use in details["uses"]:
-                    f.write(f"{class_name} ..> {use} : uses\n")
-            
-            # Include a legend for better readability
-            f.write("legend left\n")
-            f.write("| <|-- | Inheritance |\n")
-            f.write("| -->   | Composition |\n")
-            f.write("| ..>   | Uses        |\n")
-            f.write("endlegend\n")
+            # Write relationships
+            for class_name, class_info in self.classes.items():
+                for use in class_info["uses"]:
+                    f.write(f"{class_info['package']}.{class_name} ..> {use} : uses\n")
+                for comp in class_info["composition"]:
+                    f.write(f"{class_info['package']}.{class_name} --> {comp} : composed of\n")
+                for base in class_info["base_classes"]:
+                    f.write(f"{class_info['package']}.{class_name} <|-- {base}\n")
+       
 
             f.write("@enduml\n")
         print(f"PlantUML diagram source saved to {output_file}")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate a project class diagram.")
