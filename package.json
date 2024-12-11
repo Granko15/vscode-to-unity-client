@@ -32,8 +32,33 @@
           {
               "command": "vsc-to-unity-data-transfer.detailedAstroidExtractor",
               "title": "Detailed Astroid AST Extractor"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.runPythonCodeAnalyzer",
+              "title": "Run Python Code Analyzer"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.displayCodeBox",
+              "title": "Display Class Code Box"
           }
-      ]
+      ],
+      "menus": {
+        "editor/context": [
+            {
+                "command": "vsc-to-unity-data-transfer.displayCodeBox",
+                "group": "visualization",
+                "when": "editorLangId == python && editorTextFocus"
+            }
+        ]
+    },
+    "keybindings": [
+        {
+            "command": "vsc-to-unity-data-transfer.displayCodeBox",
+            "key": "ctrl+d",
+            "when": "editorLangId == python"
+        }
+    ]
+
   },
   "scripts": {
     "vscode:prepublish": "yarn run compile",
@@ -57,5 +82,9 @@
   },
   "dependencies": {
     "ws": "^8.18.0"
-  }
+  },
+  "files": [
+    "out/**/*",
+    "src/**/*.py"
+  ]
 }

@@ -3,6 +3,7 @@ import WebSocket from 'ws';
 import * as ts from 'typescript';
 import * as child_process from 'child_process';
 import * as path from 'path';
+import { exec } from 'child_process';
 
 export function activate(context: vscode.ExtensionContext) {
     const ws = new WebSocket('ws://localhost:8765');
@@ -27,67 +28,53 @@ export function activate(context: vscode.ExtensionContext) {
         ws.send(`get_document_path:${filePath}`);
     });
 
-    vscode.workspace.onDidSaveTextDocument((document) => {
-        const languageId = document.languageId;
-        const filePath = document.uri.fsPath;
-
-        if (languageId === 'typescript' || languageId === 'javascript') {
-            // TypeScript/JavaScript AST extraction
-            const sourceCode = document.getText();
-            const sourceFile = ts.createSourceFile(
-                document.fileName,
-                sourceCode,
-                ts.ScriptTarget.Latest,
-                true
-            );
-            console.log(sourceFile);
-            vscode.window.showInformationMessage('TypeScript/JavaScript AST has been generated, check the console.');
-        }
-    });
-
     vscode.window.onDidChangeTextEditorSelection((event) => {
         const lineNumber = event.selections[0].active.line;
         ws.send(`get_line_number:${lineNumber + 1}`);
     });
 
-    // Register command for each Python AST variant
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.basicAstExtractor', () => {
-            runPythonASTExtractor('basic_ast_extractor.py');
-        })
-    );
+    // Register command to run and display the Code Box in Unity App
+    const logFilePathAndLineNumber = vscode.commands.registerCommand('vsc-to-unity-data-transfer.displayCodeBox', () => {
+        const editor = vscode.window.activeTextEditor;
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.varsConstsAstExtractor', () => {
-            runPythonASTExtractor('ast_with_vars_consts.py');
-        })
-    );
+        if (editor) {
+            const filePath = editor.document.uri.fsPath; // Full file path
+            const lineNumber = editor.selection.active.line + 1; // 1-based index
+            const currentLineText = editor.document.lineAt(editor.selection.active.line).text.trim(); // Get the current line's text
 
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.detailedAstExtractor', () => {
-            runPythonASTExtractor('detailed_ast_extractor.py');
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.basicAstroidExtractor', () => {
-            runPythonASTExtractor('basic_astroid_extractor.py');
-        })
-    );
-
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.detailedAstroidExtractor', () => {
-            runPythonASTExtractor('detailed_astroid_extractor.py');
-        })
-    );
-
-
-    // Display a welcome message for activating the extension
-    let disposable = vscode.commands.registerCommand('vsc-to-unity-data-transfer.connectToService', () => {
-        vscode.window.showInformationMessage('VSC to Unity Data Transfer is active!');
+            // Check if the line starts with "class"
+            if (currentLineText.startsWith('class ')) {
+                // Extract class name without inheritance and without ':'
+                const className = currentLineText.split(/\s+/)[1].split('(')[0].split(':')[0]; 
+                console.log(`File: ${filePath}, Line: ${lineNumber}, Class: ${className}`);
+                vscode.window.showInformationMessage(`File: ${filePath}, Line: ${lineNumber}, Class: ${className}`);
+            } else {
+                console.log(`File: ${filePath}, Line: ${lineNumber}`);
+                vscode.window.showInformationMessage(`File: ${filePath}, Line: ${lineNumber}`);
+            }
+        } else {
+            vscode.window.showWarningMessage('No active editor found!');
+        }
     });
 
-    context.subscriptions.push(disposable);
+    context.subscriptions.push(logFilePathAndLineNumber);
+
+    // Register command to run the Python code analyzer
+    const analyzerCommand = vscode.commands.registerCommand(
+        'vsc-to-unity-data-transfer.runPythonCodeAnalyzer',
+        () => {
+            runPythonCodeAnalyzer('diagramGenerator.py'); // Name of your Python script
+        }
+    );
+
+    context.subscriptions.push(analyzerCommand);
+
+    // Display a welcome message for activating the extension
+    context.subscriptions.push(
+			vscode.commands.registerCommand('vsc-to-unity-data-transfer.connectToService', () => {
+			vscode.window.showInformationMessage('VSC to Unity Data Transfer is active!');
+		})
+	);
 }
 
 // Function to run the specified Python AST extractor script on the active file
@@ -118,17 +105,47 @@ async function runPythonASTExtractor(scriptName: string) {
 }
 
 // Helper function to execute the Python script
-function executePythonScript(scriptPath: string, filePath: string): Promise<string> {
+function executePythonScript(scriptPath: string, args: string): Promise<string> {
     return new Promise((resolve, reject) => {
-        const command = `python3 "${scriptPath}" "${filePath}"`;
+        const pythonCommand = process.platform === 'win32' ? 'python' : 'python3'; // Use 'python' for Windows, 'python3' for Unix
+        const command = `${pythonCommand} "${scriptPath}" ${args}`;
         child_process.exec(command, (error, stdout, stderr) => {
             if (error) {
-                reject(stderr);
+                reject(stderr || error.message);
             } else {
                 resolve(stdout);
             }
         });
     });
+}
+
+// Function to run the Python analyzer
+function runPythonCodeAnalyzer(scriptName: string) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        vscode.window.showErrorMessage("No folder is open. Please open a folder in VS Code.");
+        return;
+    }
+
+    const currentFolder = workspaceFolders[0].uri.fsPath; // Get the first open folder
+    const scriptPath = path.resolve(__dirname, '../src', scriptName); // Resolve to the 'src' folder
+    const outputBaseName = path.join(currentFolder, 'diagram'); // Output base name within the current folder
+    const args = `"${currentFolder}" -o "${outputBaseName}" -f both`; // Arguments for the script
+
+    executePythonScript(scriptPath, args)
+        .then((output) => {
+            vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
+            console.log(output);
+
+            // Display output files
+            const jsonOutput = `${outputBaseName}.json`;
+            const plantumlOutput = `${outputBaseName}.puml`;
+            vscode.window.showInformationMessage(`Generated:\n${jsonOutput}\n${plantumlOutput}`);
+        })
+        .catch((error) => {
+            vscode.window.showErrorMessage(`Error while running analyzer: ${error}`);
+            console.error(error);
+        });
 }
 
 export function deactivate() {
