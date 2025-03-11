@@ -48,17 +48,38 @@
                 "command": "vsc-to-unity-data-transfer.displayCodeBox",
                 "group": "visualization",
                 "when": "editorLangId == python && editorTextFocus"
+            },
+            {
+                "command": "vsc-to-unity-data-transfer.runPythonCodeAnalyzer",
+                "group": "visualization",
+                "when": "editorLangId == python && editorTextFocus"
             }
         ]
-    },
-    "keybindings": [
-        {
-            "command": "vsc-to-unity-data-transfer.displayCodeBox",
-            "key": "ctrl+d",
-            "when": "editorLangId == python"
-        }
-    ]
-
+      },
+      "keybindings": [
+          {
+              "command": "vsc-to-unity-data-transfer.displayCodeBox",
+              "key": "ctrl+d",
+              "when": "editorLangId == python"
+          }
+      ],
+      "viewsContainers": {
+        "activitybar": [
+          {
+            "id": "codingAssitant",
+            "title": "Coding Assistant",
+            "icon": "media/ai.png"
+          }
+        ]
+      },
+      "views": {
+        "customViewContainer": [
+          {
+            "id": "codingAssitantView",
+            "name": "Coding Assistant View"
+          }
+        ]
+      }
   },
   "scripts": {
     "vscode:prepublish": "yarn run compile",

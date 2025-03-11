@@ -180,16 +180,15 @@ def main():
     json_output = f"{args.output}.json"
     analyzer.to_json(json_output)
 
-    if args.format in {"plantuml", "both"}:
-        plantuml_output = f"{args.output}.puml"
-        analyzer.to_plantuml(plantuml_output)
+    plantuml_output = f"{args.output}.puml"
+    analyzer.to_plantuml(plantuml_output)
 
-        # Render PlantUML diagram if the `plantuml` command is installed
-        try:
-            os.system(f"plantuml {plantuml_output}")
-            print(f"PlantUML diagram rendered as {args.output}.png")
-        except Exception as e:
-            print(f"Could not render PlantUML diagram: {e}")
+    # Render PlantUML diagram if the `plantuml` command is installed
+    try:
+        os.system(f"plantuml {plantuml_output}")
+        print(f"PlantUML diagram rendered as {args.output}.png")
+    except Exception as e:
+        print(f"Could not render PlantUML diagram: {e}")
 
 if __name__ == "__main__":
     main()

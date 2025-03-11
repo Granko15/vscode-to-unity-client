@@ -1,125 +1,148 @@
 import * as vscode from 'vscode';
 import WebSocket from 'ws';
-import * as ts from 'typescript';
 import * as child_process from 'child_process';
 import * as path from 'path';
-import { exec } from 'child_process';
+
+let ws: WebSocket | null = null; // Declare ws at the top for broader scope
 
 export function activate(context: vscode.ExtensionContext) {
-    const ws = new WebSocket('ws://localhost:8765');
 
-    ws.on('open', () => {
-        vscode.window.showInformationMessage('Connected to Python service!');
-        ws.send('get_line_number');
-    });
-
-    ws.on('message', (data: string) => {
-        console.log(`Received message: ${data}`);
-        vscode.window.showInformationMessage(`Python service says: ${data}`);
-    });
-
-    vscode.window.onDidChangeActiveTextEditor((event) => {
-        const document = event?.document;
-        if (document == null || document.isUntitled) {
-            return;
-        }
-        const filePath = document.uri.fsPath;
-        vscode.window.showInformationMessage(`File changed: ${filePath}`);
-        ws.send(`get_document_path:${filePath}`);
-    });
-
-    vscode.window.onDidChangeTextEditorSelection((event) => {
-        const lineNumber = event.selections[0].active.line;
-        ws.send(`get_line_number:${lineNumber + 1}`);
-    });
-
-    // Register command to run and display the Code Box in Unity App
-    const logFilePathAndLineNumber = vscode.commands.registerCommand('vsc-to-unity-data-transfer.displayCodeBox', () => {
-        const editor = vscode.window.activeTextEditor;
-
-        if (editor) {
-            const filePath = editor.document.uri.fsPath; // Full file path
-            const lineNumber = editor.selection.active.line + 1; // 1-based index
-            const currentLineText = editor.document.lineAt(editor.selection.active.line).text.trim(); // Get the current line's text
-
-            // Check if the line starts with "class"
-            if (currentLineText.startsWith('class ')) {
-                // Extract class name without inheritance and without ':'
-                const className = currentLineText.split(/\s+/)[1].split('(')[0].split(':')[0]; 
-                console.log(`File: ${filePath}, Line: ${lineNumber}, Class: ${className}`);
-                vscode.window.showInformationMessage(`File: ${filePath}, Line: ${lineNumber}, Class: ${className}`);
-            } else {
-                console.log(`File: ${filePath}, Line: ${lineNumber}`);
-                vscode.window.showInformationMessage(`File: ${filePath}, Line: ${lineNumber}`);
-            }
-        } else {
-            vscode.window.showWarningMessage('No active editor found!');
-        }
-    });
-
-    context.subscriptions.push(logFilePathAndLineNumber);
-
-    // Register command to run the Python code analyzer
+    // Start Python server and connect WebSocket
+    startPythonServer()
+    
+    // Wait for 2 seconds to give the server time to start
+    setTimeout(() => {
+        vscode.window.showInformationMessage('Python server started successfully!');
+        console.log("Python server started successfully.");
+        connectWebSocket();  // Connect WebSocket after waiting
+    }, 2000); // 2-second delay before connecting WebSocket
+    
+    // Register the analyzer command
     const analyzerCommand = vscode.commands.registerCommand(
         'vsc-to-unity-data-transfer.runPythonCodeAnalyzer',
         () => {
-            runPythonCodeAnalyzer('diagramGenerator.py'); // Name of your Python script
+            runPythonCodeAnalyzer('diagramGenerator.py');
         }
     );
 
     context.subscriptions.push(analyzerCommand);
 
-    // Display a welcome message for activating the extension
+    // Register a command to inform user the service is active
     context.subscriptions.push(
-			vscode.commands.registerCommand('vsc-to-unity-data-transfer.connectToService', () => {
-			vscode.window.showInformationMessage('VSC to Unity Data Transfer is active!');
-		})
-	);
+        vscode.commands.registerCommand('vsc-to-unity-data-transfer.connectToService', () => {
+            vscode.window.showInformationMessage('VSC to Unity Data Transfer is active!');
+        })
+    );
 }
 
-// Function to run the specified Python AST extractor script on the active file
-async function runPythonASTExtractor(scriptName: string) {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-        vscode.window.showErrorMessage("No active editor found! Please open a file to analyze.");
-        return;
-    }
-
-    const filePath = editor.document.uri.fsPath;
-    const scriptPath = path.join(__dirname, '../src', scriptName);
+// Function to start Python server
+async function startPythonServer() {
+    const pythonScriptPath = path.join(__dirname, '../src/networking', 'server.py');
 
     try {
-        const output = await executePythonScript(scriptPath, filePath);
-        
-        // Show the output in the Output channel
-        const outputChannel = vscode.window.createOutputChannel("Python AST Output");
-        outputChannel.appendLine(output);
-        outputChannel.show();
-
-        // Display the generated AST visualization image
-        const imagePath = path.join(path.dirname(filePath), path.basename(filePath, '.py') + '_ast');
-        vscode.commands.executeCommand('vscode.open', vscode.Uri.file(imagePath));
+        console.log("Starting Python server...");
+        await executePythonScript(pythonScriptPath,[]);
     } catch (error) {
-        vscode.window.showErrorMessage(`Error generating Python AST: ${error}`);
+        vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
+        console.error(`Failed to start Python server: ${error}`);
     }
 }
 
-// Helper function to execute the Python script
-function executePythonScript(scriptPath: string, args: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const pythonCommand = process.platform === 'win32' ? 'python' : 'python3'; // Use 'python' for Windows, 'python3' for Unix
-        const command = `${pythonCommand} "${scriptPath}" ${args}`;
-        child_process.exec(command, (error, stdout, stderr) => {
-            if (error) {
-                reject(stderr || error.message);
+// Function to connect to WebSocket server
+async function connectWebSocket() {
+    const maxAttempts = 10;
+    let attempts = 0;
+    const interval = 1000; // 1 second
+
+    const attemptConnection = () => {
+        ws = new WebSocket('ws://localhost:7777');
+
+        ws.on('open', () => {
+            vscode.window.showInformationMessage('Connected to Python service!');
+            ws?.send('VSC connected to Python service');
+            console.log("WebSocket connection opened successfully.");
+        });
+
+        ws.on('message', (data: string) => {
+            console.log(`Received message: ${data}`);
+            vscode.window.showInformationMessage(`Python service says: ${data}`);
+        });
+
+        ws.on('error', (error) => {
+            if (attempts < maxAttempts) {
+                attempts++;
+                console.log(`WebSocket attempt ${attempts}/${maxAttempts} failed. Retrying...`);
+                setTimeout(attemptConnection, interval);
             } else {
-                resolve(stdout);
+                vscode.window.showErrorMessage(`WebSocket error: ${error.message}`);
+                console.error(`WebSocket connection failed after ${maxAttempts} attempts.`);
             }
+        });
+
+        ws.on('close', () => {
+            vscode.window.showInformationMessage('WebSocket connection closed');
+            console.log("WebSocket connection closed.");
+        });
+
+        setupFileAndLineChangeListeners();
+    };
+
+    attemptConnection();
+}
+
+// Set up listeners for file and line change
+function setupFileAndLineChangeListeners() {
+    // Listen for file changes and send the path via WebSocket
+    vscode.window.onDidChangeActiveTextEditor((event) => {
+        const document = event?.document;
+        if (!document || document.isUntitled) {
+            return;
+        }
+        const filePath = document.uri.fsPath;
+        vscode.window.showInformationMessage(`File changed: ${filePath}`);
+        ws?.send(`get_document_path:${filePath}`);
+    });
+
+    // Listen for selection changes and send the line number via WebSocket
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+        const lineNumber = event.selections[0].active.line;
+        ws?.send(`get_line_number:${lineNumber + 1}`);
+    });
+}
+
+// Function to execute Python script
+function executePythonScript(scriptPath: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const pythonCommand: string = process.platform === 'win32' ? 'python' : 'python3';
+
+        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
+
+        const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
+        outputChannel.show(true);
+
+        pyProcess.stdout.on('data', (data: Buffer) => {
+            outputChannel.appendLine(`[Python]: ${data.toString()}`);
+        });
+
+        pyProcess.stderr.on('data', (data: Buffer) => {
+            outputChannel.appendLine(`[Python ERROR]: ${data.toString()}`);
+        });
+
+        pyProcess.on('close', (code) => {
+            if (code === 0) {
+                resolve("Python script finished successfully");
+            } else {
+                reject(`Python script exited with code ${code}`);
+            }
+        });
+
+        pyProcess.on('error', (err) => {
+            reject(`Failed to start Python script: ${err.message}`);
         });
     });
 }
 
-// Function to run the Python analyzer
+// Function to run the Python code analyzer
 function runPythonCodeAnalyzer(scriptName: string) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -127,17 +150,20 @@ function runPythonCodeAnalyzer(scriptName: string) {
         return;
     }
 
-    const currentFolder = workspaceFolders[0].uri.fsPath; // Get the first open folder
-    const scriptPath = path.resolve(__dirname, '../src', scriptName); // Resolve to the 'src' folder
-    const outputBaseName = path.join(currentFolder, 'diagram'); // Output base name within the current folder
-    const args = `"${currentFolder}" -o "${outputBaseName}" -f both`; // Arguments for the script
+    const currentFolder = workspaceFolders[0].uri.fsPath;
+    const scriptPath = path.resolve(__dirname, '../src', scriptName);
+    const outputBaseName = path.join(currentFolder, 'diagram');
+    const args = [currentFolder, '-o', outputBaseName, '-f', 'both'];
+
+    console.log(`Running Python script at ${scriptPath}`);
+    console.log(`Analyzing project directory: ${currentFolder}`);
+    console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
     executePythonScript(scriptPath, args)
         .then((output) => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
             console.log(output);
 
-            // Display output files
             const jsonOutput = `${outputBaseName}.json`;
             const plantumlOutput = `${outputBaseName}.puml`;
             vscode.window.showInformationMessage(`Generated:\n${jsonOutput}\n${plantumlOutput}`);
@@ -148,6 +174,8 @@ function runPythonCodeAnalyzer(scriptName: string) {
         });
 }
 
+// Function to handle deactivation
 export function deactivate() {
     // Close WebSocket when the extension is deactivated
+    ws?.close();
 }
