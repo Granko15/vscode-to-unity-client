@@ -1,113 +1,28 @@
-import * as vscode from 'vscode';
-import WebSocket from 'ws';
-import * as child_process from 'child_process';
-import * as path from 'path';
+import * as vscode from "vscode";
+import WebSocket from "ws";
+import * as path from "path";
+import * as child_process from "child_process";
 
-let ws: WebSocket | null = null; // Declare ws at the top for broader scope
+// WebSocket instance
+let ws: WebSocket | null = null;
 
+// Extension activation
 export function activate(context: vscode.ExtensionContext) {
+    console.log("VSCode to Unity Data Transfer Extension activated.");
 
-    // Start Python server and connect WebSocket
-    startPythonServer()
-    
-    // Wait for 2 seconds to give the server time to start
+    startPythonServer();
+
+    // Wait for 3 seconds before attempting WebSocket connection
     setTimeout(() => {
-        vscode.window.showInformationMessage('Python server started successfully!');
-        console.log("Python server started successfully.");
-        connectWebSocket();  // Connect WebSocket after waiting
-    }, 2000); // 2-second delay before connecting WebSocket
-    
-    // Register the analyzer command
-    const analyzerCommand = vscode.commands.registerCommand(
-        'vsc-to-unity-data-transfer.runPythonCodeAnalyzer',
-        () => {
-            runPythonCodeAnalyzer('diagramGenerator.py');
-        }
-    );
-
-    context.subscriptions.push(analyzerCommand);
-
-    // Register a command to inform user the service is active
-    context.subscriptions.push(
-        vscode.commands.registerCommand('vsc-to-unity-data-transfer.connectToService', () => {
-            vscode.window.showInformationMessage('VSC to Unity Data Transfer is active!');
-        })
-    );
+        connectWebSocket(context);
+    }, 3000);
 }
 
-// Function to start Python server
-async function startPythonServer() {
-    const pythonScriptPath = path.join(__dirname, '../src/networking', 'server.py');
-
-    try {
-        console.log("Starting Python server...");
-        await executePythonScript(pythonScriptPath,[]);
-    } catch (error) {
-        vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
-        console.error(`Failed to start Python server: ${error}`);
+// Extension deactivation
+export function deactivate() {
+    if (ws) {
+        ws.close();
     }
-}
-
-// Function to connect to WebSocket server
-async function connectWebSocket() {
-    const maxAttempts = 10;
-    let attempts = 0;
-    const interval = 1000; // 1 second
-
-    const attemptConnection = () => {
-        ws = new WebSocket('ws://localhost:7777');
-
-        ws.on('open', () => {
-            vscode.window.showInformationMessage('Connected to Python service!');
-            ws?.send('VSC connected to Python service');
-            console.log("WebSocket connection opened successfully.");
-        });
-
-        ws.on('message', (data: string) => {
-            console.log(`Received message: ${data}`);
-            vscode.window.showInformationMessage(`Python service says: ${data}`);
-        });
-
-        ws.on('error', (error) => {
-            if (attempts < maxAttempts) {
-                attempts++;
-                console.log(`WebSocket attempt ${attempts}/${maxAttempts} failed. Retrying...`);
-                setTimeout(attemptConnection, interval);
-            } else {
-                vscode.window.showErrorMessage(`WebSocket error: ${error.message}`);
-                console.error(`WebSocket connection failed after ${maxAttempts} attempts.`);
-            }
-        });
-
-        ws.on('close', () => {
-            vscode.window.showInformationMessage('WebSocket connection closed');
-            console.log("WebSocket connection closed.");
-        });
-
-        setupFileAndLineChangeListeners();
-    };
-
-    attemptConnection();
-}
-
-// Set up listeners for file and line change
-function setupFileAndLineChangeListeners() {
-    // Listen for file changes and send the path via WebSocket
-    vscode.window.onDidChangeActiveTextEditor((event) => {
-        const document = event?.document;
-        if (!document || document.isUntitled) {
-            return;
-        }
-        const filePath = document.uri.fsPath;
-        vscode.window.showInformationMessage(`File changed: ${filePath}`);
-        ws?.send(`get_document_path:${filePath}`);
-    });
-
-    // Listen for selection changes and send the line number via WebSocket
-    vscode.window.onDidChangeTextEditorSelection((event) => {
-        const lineNumber = event.selections[0].active.line;
-        ws?.send(`get_line_number:${lineNumber + 1}`);
-    });
 }
 
 // Function to execute Python script
@@ -174,8 +89,127 @@ function runPythonCodeAnalyzer(scriptName: string) {
         });
 }
 
-// Function to handle deactivation
-export function deactivate() {
-    // Close WebSocket when the extension is deactivated
-    ws?.close();
+// Command to send selected text and file path via WebSocket
+export function handleDisplayCodeBox(ws: WebSocket) {
+    return () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            vscode.window.showErrorMessage("WebSocket is not connected.");
+            return;
+        }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage("No active editor found.");
+            return;
+        }
+
+        const filePath = editor.document.uri.fsPath;
+        const selectedText = editor.document.getText(editor.selection);
+
+        const message = JSON.stringify({
+            command: "display_code_box",
+            file: filePath,
+            selectedText: selectedText
+        });
+
+        ws.send(message);
+        vscode.window.showInformationMessage(`Sent display request for: ${filePath}`);
+    };
+}
+
+// Command to run the Python analyzer script
+export function handleRunPythonAnalyzer() {
+    return async () => {
+        const workspaceFolders = vscode.workspace.workspaceFolders;
+        if (!workspaceFolders || workspaceFolders.length === 0) {
+            vscode.window.showErrorMessage("No folder is open. Please open a folder in VS Code.");
+            return;
+        }
+
+        try {
+            runPythonCodeAnalyzer('diagramGenerator.py');
+        } catch (error) {
+            vscode.window.showErrorMessage(`Failed to run Python analyzer: ${error}`);
+        }
+    };
+}
+
+// Register all commands
+export function registerCommands(context: vscode.ExtensionContext, ws: WebSocket) {
+    context.subscriptions.push(
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.displayCodeBox", handleDisplayCodeBox(ws)),
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer())
+    );
+}
+
+// Function to start Python server
+async function startPythonServer() {
+    const pythonScriptPath = path.join(__dirname, "../src/networking/server.py");
+
+    try {
+        console.log("Starting Python server...");
+        await executePythonScript(pythonScriptPath, []);
+    } catch (error) {
+        vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
+        console.error(`Failed to start Python server: ${error}`);
+    }
+}
+
+// Function to connect to WebSocket server
+async function connectWebSocket(context: vscode.ExtensionContext) {
+    const maxAttempts = 10;
+    let attempts = 0;
+    const interval = 1000; // 1 second
+
+    const attemptConnection = () => {
+        if (attempts >= maxAttempts) {
+            vscode.window.showErrorMessage("Failed to connect to WebSocket server.");
+            return;
+        }
+
+        ws = new WebSocket("ws://localhost:7777");
+
+        ws.onopen = () => {
+            console.log("WebSocket connection opened successfully.");
+            vscode.window.showInformationMessage("WebSocket connected to Python server.");
+            ws!.send("Hello from VS Code!");
+            // Now that WebSocket is connected, register commands
+            registerCommands(context, ws!);
+        };
+
+        ws.onmessage = (event) => {
+            console.log(`Received message: ${event.data}`);
+        };
+
+        ws.onerror = (error) => {
+            console.error("WebSocket error:", error);
+        };
+
+        ws.onclose = () => {
+            console.warn("WebSocket closed. Retrying...");
+            setTimeout(attemptConnection, interval);
+            attempts++;
+        };
+
+        setupFileAndLineChangeListeners();
+    };
+
+    attemptConnection();
+}
+
+function setupFileAndLineChangeListeners() {
+    vscode.window.onDidChangeActiveTextEditor((event) => {
+        const document = event?.document;
+        if (!document || document.isUntitled) {
+            return;
+        }
+        const filePath = document.uri.fsPath;
+        vscode.window.showInformationMessage(`File changed: ${filePath}`);
+        ws?.send(`get_document_path:${filePath}`);
+    });
+
+    vscode.window.onDidChangeTextEditorSelection((event) => {
+        const lineNumber = event.selections[0].active.line;
+        ws?.send(`get_line_number:${lineNumber + 1}`);
+    });
 }
