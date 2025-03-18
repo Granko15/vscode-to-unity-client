@@ -40,12 +40,21 @@
           {
               "command": "vsc-to-unity-data-transfer.displayCodeBox",
               "title": "Display Class Code Box"
+          },
+          {
+            "command": "vsc-to-unity-data-transfer.hideCodeBox",
+            "title": "Hide Codebox"
           }
       ],
       "menus": {
         "editor/context": [
             {
                 "command": "vsc-to-unity-data-transfer.displayCodeBox",
+                "group": "visualization",
+                "when": "editorLangId == python && editorTextFocus"
+            },
+            {
+                "command": "vsc-to-unity-data-transfer.hideCodeBox",
                 "group": "visualization",
                 "when": "editorLangId == python && editorTextFocus"
             },
@@ -60,6 +69,16 @@
           {
               "command": "vsc-to-unity-data-transfer.displayCodeBox",
               "key": "ctrl+d",
+              "when": "editorLangId == python"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.hideCodeBox",
+              "key": "ctrl+h",
+              "when": "editorLangId == python"
+          },
+          {
+              "command": "vsc-to-unity-data-transfer.runPythonCodeAnalyzer",
+              "key": "ctrl+shift+g",
               "when": "editorLangId == python"
           }
       ],

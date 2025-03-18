@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import WebSocket from "ws";
 import * as path from "path";
 import * as child_process from "child_process";
+import * as fs from "fs";
 
 // WebSocket instance
 let ws: WebSocket | null = null;
@@ -58,7 +59,7 @@ function executePythonScript(scriptPath: string, args: string[]): Promise<string
 }
 
 // Function to run the Python code analyzer
-function runPythonCodeAnalyzer(scriptName: string) {
+function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
         vscode.window.showErrorMessage("No folder is open. Please open a folder in VS Code.");
@@ -68,6 +69,7 @@ function runPythonCodeAnalyzer(scriptName: string) {
     const currentFolder = workspaceFolders[0].uri.fsPath;
     const scriptPath = path.resolve(__dirname, '../src', scriptName);
     const outputBaseName = path.join(currentFolder, 'diagram');
+    const jsonOutputPath = `${outputBaseName}.json`;
     const args = [currentFolder, '-o', outputBaseName, '-f', 'both'];
 
     console.log(`Running Python script at ${scriptPath}`);
@@ -75,13 +77,31 @@ function runPythonCodeAnalyzer(scriptName: string) {
     console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
     executePythonScript(scriptPath, args)
-        .then((output) => {
+        .then(() => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
-            console.log(output);
+            
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                vscode.window.showErrorMessage("WebSocket is not connected.");
+                return;
+            }
 
-            const jsonOutput = `${outputBaseName}.json`;
-            const plantumlOutput = `${outputBaseName}.puml`;
-            vscode.window.showInformationMessage(`Generated:\n${jsonOutput}\n${plantumlOutput}`);
+            // Read and send the generated JSON file
+            fs.readFile(jsonOutputPath, "utf8", (err, data) => {
+                if (err) {
+                    vscode.window.showErrorMessage(`Error reading JSON file: ${err.message}`);
+                    return;
+                }
+
+                const message = JSON.stringify({
+                    command: "send_diagram",
+                    fileName: "diagram.json",
+                    content: data
+                });
+
+                ws.send(message);
+                vscode.window.showInformationMessage("Diagram JSON sent to the server.");
+            });
+
         })
         .catch((error) => {
             vscode.window.showErrorMessage(`Error while running analyzer: ${error}`);
@@ -89,7 +109,31 @@ function runPythonCodeAnalyzer(scriptName: string) {
         });
 }
 
-// Command to send selected text and file path via WebSocket
+// Helper function to get the class name at the cursor's position
+function getClassNameAtCursor(editor: vscode.TextEditor, cursorPosition: vscode.Position): string | null {
+    const documentText = editor.document.getText();
+    
+    // Regular expression to match class definitions
+    const classRegex = /class\s+([A-Za-z0-9_]+)(?=\s*(\(|:))/g;
+
+    let match;
+    // Loop through all classes in the document
+    while ((match = classRegex.exec(documentText)) !== null) {
+        const classStartPos = editor.document.positionAt(match.index);
+        const classEndMatch = documentText.slice(match.index + match[0].length).search(/class\s+/);
+        const classEnd = classEndMatch !== -1
+            ? editor.document.positionAt(match.index + match[0].length + classEndMatch)
+            : editor.document.positionAt(documentText.length); // End at the document's end
+
+        // Check if the cursor is inside this class definition
+        if (cursorPosition.isBeforeOrEqual(classEnd) && cursorPosition.isAfter(classStartPos)) {
+            return match[1]; // Return the class name
+        }
+    }
+
+    return null; // Return null if no class is found
+}
+
 export function handleDisplayCodeBox(ws: WebSocket) {
     return () => {
         if (!ws || ws.readyState !== WebSocket.OPEN) {
@@ -105,20 +149,65 @@ export function handleDisplayCodeBox(ws: WebSocket) {
 
         const filePath = editor.document.uri.fsPath;
         const selectedText = editor.document.getText(editor.selection);
+        const cursorPosition = editor.selection.active;
+
+        const className = getClassNameAtCursor(editor, cursorPosition);
+
+        if (!className) {
+            vscode.window.showErrorMessage("Could not find class at cursor position.");
+            return;
+        }
 
         const message = JSON.stringify({
             command: "display_code_box",
             file: filePath,
+            className: className,
             selectedText: selectedText
         });
 
         ws.send(message);
-        vscode.window.showInformationMessage(`Sent display request for: ${filePath}`);
+        vscode.window.showInformationMessage(`Sent display request for class: ${className} in ${filePath}`);
+    };
+}
+
+export function handleHideCodeBox(ws: WebSocket) {
+    return () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+            vscode.window.showErrorMessage("WebSocket is not connected.");
+            return;
+        }
+
+        const editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage("No active editor found.");
+            return;
+        }
+
+        const filePath = editor.document.uri.fsPath;
+        const selectedText = editor.document.getText(editor.selection);
+        const cursorPosition = editor.selection.active;
+
+        const className = getClassNameAtCursor(editor, cursorPosition);
+
+        if (!className) {
+            vscode.window.showErrorMessage("Could not find class at cursor position.");
+            return;
+        }
+
+        const message = JSON.stringify({
+            command: "hide_code_box",
+            file: filePath,
+            className: className,
+            selectedText: selectedText
+        });
+
+        ws.send(message);
+        vscode.window.showInformationMessage(`Sent hide request for class: ${className} in ${filePath}`);
     };
 }
 
 // Command to run the Python analyzer script
-export function handleRunPythonAnalyzer() {
+export function handleRunPythonAnalyzer(ws?: WebSocket) {
     return async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -127,7 +216,7 @@ export function handleRunPythonAnalyzer() {
         }
 
         try {
-            runPythonCodeAnalyzer('diagramGenerator.py');
+            runPythonCodeAnalyzer('diagramGenerator.py', ws);
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to run Python analyzer: ${error}`);
         }
@@ -138,7 +227,8 @@ export function handleRunPythonAnalyzer() {
 export function registerCommands(context: vscode.ExtensionContext, ws: WebSocket) {
     context.subscriptions.push(
         vscode.commands.registerCommand("vsc-to-unity-data-transfer.displayCodeBox", handleDisplayCodeBox(ws)),
-        vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer())
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer(ws)),
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.hideCodeBox", handleHideCodeBox(ws))  // Register the hide code box command
     );
 }
 
