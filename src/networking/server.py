@@ -9,17 +9,18 @@ async def handler(websocket, path):
     print(f"Client connected: {client_ip}")
     connected_clients.add(websocket)
 
+    print(f"Client connected: {client_ip}")
     try:
         async for message in websocket:
             print(f"Received message from {client_ip}: {message}")
-            # Broadcast the message to all connected clients
             await broadcast(message, websocket)
     except websockets.exceptions.ConnectionClosed:
         print(f"Client {client_ip} disconnected")
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Error in handler: {e}")
     finally:
         connected_clients.remove(websocket)
+
 
 async def broadcast(message, sender_websocket):
     for client in connected_clients:

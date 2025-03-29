@@ -1,12 +1,15 @@
 import openai
 from openai import OpenAI
-import sys
-import json
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+api_key = os.getenv("OPENAI_API_KEY")
 
 client = OpenAI(
   organization='org-xL8A4RIl6oUOCBUzdOlNFUJ1',
   project='proj_ZuIi9ZcuFNiWauexpYg7e14r',
-  api_key=''
+  api_key=api_key
 )
 assistant = client.beta.assistants.create(
   name="Python Programming Expert",

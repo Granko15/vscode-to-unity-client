@@ -3,9 +3,12 @@ import WebSocket from "ws";
 import * as path from "path";
 import * as child_process from "child_process";
 import * as fs from "fs";
+import { CopilotViewProvider } from "./panel";
 
 // WebSocket instance
 let ws: WebSocket | null = null;
+
+const SECRET_KEY = "openai-api-key";
 
 // Extension activation
 export function activate(context: vscode.ExtensionContext) {
@@ -17,6 +20,15 @@ export function activate(context: vscode.ExtensionContext) {
     setTimeout(() => {
         connectWebSocket(context);
     }, 3000);
+
+    const provider = new CopilotViewProvider(context.extensionUri);
+    context.subscriptions.push(
+      vscode.window.registerWebviewViewProvider(
+        CopilotViewProvider.viewType,
+        provider
+      )
+    );
+
 }
 
 // Extension deactivation
@@ -228,8 +240,8 @@ export function registerCommands(context: vscode.ExtensionContext, ws: WebSocket
     context.subscriptions.push(
         vscode.commands.registerCommand("vsc-to-unity-data-transfer.displayCodeBox", handleDisplayCodeBox(ws)),
         vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer(ws)),
-        vscode.commands.registerCommand("vsc-to-unity-data-transfer.hideCodeBox", handleHideCodeBox(ws))  // Register the hide code box command
-    );
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.hideCodeBox", handleHideCodeBox(ws)) // Register the hide code box command
+    )
 }
 
 // Function to start Python server
@@ -269,6 +281,14 @@ async function connectWebSocket(context: vscode.ExtensionContext) {
 
         ws.onmessage = (event) => {
             console.log(`Received message: ${event.data}`);
+            try {
+                const data = JSON.parse(event.data.toString());
+                if (data.command === "JumpToClass") {
+                    handleJumpToClassMessage(data);
+                }
+            } catch (e) {
+                console.error("Error parsing message: ", e);
+            }
         };
 
         ws.onerror = (error) => {
@@ -285,6 +305,26 @@ async function connectWebSocket(context: vscode.ExtensionContext) {
     };
 
     attemptConnection();
+}
+
+async function handleJumpToClassMessage(data: any) {
+    const filePath: string = data.file;
+    const lineNumber: number = data.line - 1; // VS Code lines are 0-based
+
+    try {
+        const document = await vscode.workspace.openTextDocument(filePath);
+        await vscode.window.showTextDocument(document);
+
+        const editor = vscode.window.activeTextEditor;
+        if (editor) {
+            const position = new vscode.Position(lineNumber, 0);
+            const selection = new vscode.Selection(position, position);
+            editor.selection = selection;
+            editor.revealRange(selection, vscode.TextEditorRevealType.InCenter);
+        }
+    } catch (e) {
+        vscode.window.showErrorMessage(`Failed to open file or navigate to line: ${e}`);
+    }
 }
 
 function setupFileAndLineChangeListeners() {
