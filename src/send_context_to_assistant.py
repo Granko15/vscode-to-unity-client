@@ -46,17 +46,35 @@ client = OpenAI(
     api_key=api_key
 )
 
-def send_message_to_assistant(prompt, thread_id):
+def send_context_to_assistant(thread_id, workspace_path=None):
     try:
         assistant_id = "asst_9UCU9sdFMl9VAnHl4SBPuUA0"
+        user_prompt = ""
+        diagram_json = None
+
+        if workspace_path:
+            diagram_file_path = os.path.join(workspace_path, "diagram.json")
+        else:
+            diagram_file_path = "diagram.json"
+
+        try:
+            with open(diagram_file_path, 'r', encoding='utf-8') as f:
+                diagram_json = json.load(f)
+                user_prompt += f"\n\nThis is the project context in the form of JSON:\n`json\n{json.dumps(diagram_json, ensure_ascii=False)}\n`"
+        except FileNotFoundError:
+            logging.warning(f"diagram.json not found in {diagram_file_path}")
+        except json.JSONDecodeError:
+            logging.error(f"Error decoding diagram.json in {diagram_file_path}")
+        except Exception as e:
+            logging.error(f"Error reading diagram.json: {e}")
 
         client.beta.threads.messages.create(
             thread_id=thread_id,
             role="user",
-            content=prompt
+            content=user_prompt
         )
 
-        event_handler = EventHandler(prompt)
+        event_handler = EventHandler(user_prompt)
 
         with client.beta.threads.runs.stream(
             thread_id=thread_id,
@@ -65,13 +83,14 @@ def send_message_to_assistant(prompt, thread_id):
             event_handler=event_handler,
         ) as stream:
             stream.until_done()
-            return
+        return ""
 
     except Exception as e:
         return f"Error: {e}"
 
 if __name__ == "__main__":
-    prompt = sys.argv[1] if len(sys.argv) > 1 else ""
-    thread_id = sys.argv[2] if len(sys.argv) > 2 else None
+    thread_id = sys.argv[1] if len(sys.argv) > 1 else None
+    workspace_path = sys.argv[2] if len(sys.argv) > 2 else None
 
-    result = send_message_to_assistant(prompt, thread_id)
+    result = send_context_to_assistant(thread_id, workspace_path)
+    print(result)

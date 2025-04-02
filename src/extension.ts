@@ -4,6 +4,7 @@ import * as path from "path";
 import * as child_process from "child_process";
 import * as fs from "fs";
 import { CopilotViewProvider } from "./panel";
+import { FineTuningJobEventsPage } from "openai/resources/fine-tuning/index.mjs";
 
 // WebSocket instance
 let ws: WebSocket | null = null;
@@ -37,6 +38,41 @@ export function deactivate() {
         ws.close();
     }
 }
+
+function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<string> {
+    return new Promise((resolve, reject) => {
+        //let pythonCommand: string = process.platform === 'win32' ? 'python' : 'python3';
+        
+        let pythonCommand = path.join(__dirname, '../python/Scripts/python.exe');
+
+        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
+
+        const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
+        outputChannel.show(true);
+
+        pyProcess.stdout.on('data', (data: Buffer) => {
+            outputChannel.appendLine(`${data.toString()}`);
+            resolve(data.toString()); // Resolve the promise with the output data
+        });
+
+        pyProcess.stderr.on('data', (data: Buffer) => {
+            outputChannel.appendLine(`[Python ERROR]: ${data.toString()}`);
+        });
+
+        pyProcess.on('close', (code) => {
+            if (code === 0) {
+                resolve("Python script finished successfully");
+            } else {
+                reject(`Python script exited with code ${code}`);
+            }
+        });
+
+        pyProcess.on('error', (err) => {
+            reject(`Failed to start Python script: ${err.message}`);
+        });
+    });
+}
+
 
 // Function to execute Python script
 function executePythonScript(scriptPath: string, args: string[]): Promise<string> {
@@ -119,6 +155,182 @@ function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
             vscode.window.showErrorMessage(`Error while running analyzer: ${error}`);
             console.error(error);
         });
+
+}
+
+function createCodeboxThreadsJson(diagramJsonPath: string, workspaceFolderPath: string) {
+    try {
+        // 1. Načítanie diagram.json
+        const diagramJsonContent = fs.readFileSync(diagramJsonPath, "utf8");
+        const diagramData = JSON.parse(diagramJsonContent);
+
+        // 2. Parsovanie JSON
+        if (diagramData && diagramData.classes) {
+            const classes = diagramData.classes;
+            const codeboxThreadsData: { [className: string]: { filePath: string; thread_id: string } } = {};
+
+            // 3. Vytvorenie záznamov pre každú triedu z diagram.json
+            for (const className in classes) {
+                if (classes.hasOwnProperty(className)) {
+                    const classInfo = classes[className];
+                    const filePath = classInfo.file_path;
+
+                    codeboxThreadsData[className] = {
+                        filePath: filePath,
+                        thread_id: "dummy_thread",
+                    };
+                }
+            }
+
+            // 4. Načítanie existujúceho codebox_threads.json (ak existuje)
+            const codeboxThreadsJsonPath = path.join(workspaceFolderPath, "codebox_threads.json");
+            let existingCodeboxThreadsData: { [className: string]: { filePath: string; thread_id: string } } = {};
+            if (fs.existsSync(codeboxThreadsJsonPath)) {
+                const existingContent = fs.readFileSync(codeboxThreadsJsonPath, "utf8");
+                existingCodeboxThreadsData = JSON.parse(existingContent);
+            }
+
+            // 5. Zachovanie záznamov, ktoré nemajú dummy_thread a existujú v existujúcom súbore
+            for (const className in existingCodeboxThreadsData) {
+                if (existingCodeboxThreadsData.hasOwnProperty(className)) {
+                    if (existingCodeboxThreadsData[className].thread_id !== "dummy_thread" && codeboxThreadsData[className]) {
+                        codeboxThreadsData[className].thread_id = existingCodeboxThreadsData[className].thread_id;
+                    }
+                }
+            }
+
+            // 6. Uloženie aktualizovaného súboru s informáciami o všetkých triedach
+            fs.writeFileSync(codeboxThreadsJsonPath, JSON.stringify(codeboxThreadsData, null, 4), "utf8");
+
+            console.log("Updated codebox_threads.json with class information.");
+            vscode.window.showInformationMessage("codebox_threads.json updated successfully.");
+        } else {
+            vscode.window.showErrorMessage("diagram.json does not contain class information.");
+        }
+    } catch (error) {
+        vscode.window.showErrorMessage(`Error updating codebox_threads.json: ${error}`);
+        console.error(`Error updating codebox_threads.json: ${error}`);
+    }
+}
+
+function sendCodeboxThreadsViaWebSocket() {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        console.error("No workspace folder found.");
+        return;
+    }
+
+    const workspacePath = workspaceFolders[0].uri.fsPath;
+    const codeboxThreadsJsonPath = path.join(workspacePath, "codebox_threads.json");
+
+    try {
+        const codeboxThreadsJsonContent = fs.readFileSync(codeboxThreadsJsonPath, "utf8");
+        const codeboxThreadsData = JSON.parse(codeboxThreadsJsonContent);
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                command: "AssignThreadsToCodeboxes",
+                data: codeboxThreadsData,
+            }));
+            console.log("Sent codebox_threads.json via WebSocket.");
+        } else {
+            console.error("WebSocket is not open.");
+        }
+    } catch (error) {
+        console.error(`Error reading or sending codebox_threads.json: ${error}`);
+    }
+}
+
+async function sendChatHistoryOfNonDummyThreads(ws: WebSocket) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    if (!workspaceFolders || workspaceFolders.length === 0) {
+        console.error("No workspace folder found.");
+        vscode.window.showErrorMessage("No workspace folder found.");
+        return;
+    }
+
+    const workspacePath = workspaceFolders[0].uri.fsPath;
+    const codeboxThreadsJsonPath = path.join(workspacePath, "codebox_threads.json");
+
+    try {
+        const codeboxThreadsJsonContent = fs.readFileSync(codeboxThreadsJsonPath, "utf8");
+        const codeboxThreadsData = JSON.parse(codeboxThreadsJsonContent);
+
+        const chatHistoryData = [];
+
+        for (const className in codeboxThreadsData) {
+            if (codeboxThreadsData.hasOwnProperty(className)) {
+                const threadInfo = codeboxThreadsData[className];
+                if (threadInfo.thread_id !== "dummy_thread") {
+                    try {
+                        const chatHistory = await getChatHistory(threadInfo.thread_id);
+                        chatHistoryData.push({
+                            className: className,
+                            filePath: threadInfo.filePath,
+                            chatHistory: chatHistory, // chatHistory teraz obsahuje len rolu a text
+                        });
+                    } catch (error) {
+                        console.error(`Error fetching chat history for ${className}: ${error}`);
+                        vscode.window.showErrorMessage(`Error fetching chat history for ${className}: ${error}`);
+                    }
+                }
+            }
+        }
+
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                command: "LoadAIHistory",
+                data: chatHistoryData,
+            }));
+            console.log("Sent chat history of non dummy threads via WebSocket.");
+        } else {
+            console.error("WebSocket is not open.");
+            vscode.window.showErrorMessage("WebSocket is not open.");
+        }
+    } catch (error) {
+        console.error(`Error reading or sending chat history: ${error}`);
+        vscode.window.showErrorMessage(`Error reading or sending chat history: ${error}`);
+    }
+}
+
+interface ChatMessage {
+    role: string;
+    content: { type: string; value: string }[];
+}
+
+interface ExtractedMessage {
+    role: string;
+    text: string | null;
+}
+
+async function getChatHistory(threadId: string): Promise<ExtractedMessage[]> {
+    const scriptPath = path.join(__dirname, "../src/get_messages.py");
+    try {
+        const chatJsonContent = await executePythonScriptInVenv(scriptPath, [threadId]);
+        console.log(`Raw Python script output for threadId ${threadId}: ${chatJsonContent}`); // Log raw output
+
+        const cleanedJsonContent = chatJsonContent.trim();
+
+        try {
+            const chatData: ChatMessage[] = JSON.parse(cleanedJsonContent);
+            const extractedMessages: ExtractedMessage[] = chatData.map((item: ChatMessage) => {
+                const content = item.content.find(c => c.type === "text");
+                return {
+                    role: item.role,
+                    text: content ? content.value : null,
+                };
+            });
+            return extractedMessages;
+        } catch (jsonError) {
+            console.error(`Error parsing JSON from Python script: ${jsonError}, raw output: ${cleanedJsonContent}`);
+            vscode.window.showErrorMessage(`Error parsing JSON from Python script: ${jsonError}`);
+            return [];
+        }
+    } catch (error) {
+        console.error(`Error executing Python script for chat history: ${error}`);
+        vscode.window.showErrorMessage(`Error executing Python script for chat history: ${error}`);
+        return [];
+    }
 }
 
 // Helper function to get the class name at the cursor's position
@@ -227,14 +439,24 @@ export function handleRunPythonAnalyzer(ws?: WebSocket) {
             return;
         }
 
+        const currentFolder = workspaceFolders[0].uri.fsPath;
+        const diagramJsonPath = path.join(currentFolder, "diagram.json");
+
         try {
-            runPythonCodeAnalyzer('diagramGenerator.py', ws);
+            runPythonCodeAnalyzer("diagramGenerator.py", ws);
+            setTimeout(() => {
+                createCodeboxThreadsJson(diagramJsonPath, currentFolder);
+            }, 2000);
+            setTimeout(() => {
+                sendChatHistoryOfNonDummyThreads(ws!);
+            }, 2000);
+            
         } catch (error) {
             vscode.window.showErrorMessage(`Failed to run Python analyzer: ${error}`);
+            console.error(error);
         }
     };
 }
-
 // Register all commands
 export function registerCommands(context: vscode.ExtensionContext, ws: WebSocket) {
     context.subscriptions.push(
@@ -274,7 +496,6 @@ async function connectWebSocket(context: vscode.ExtensionContext) {
         ws.onopen = () => {
             console.log("WebSocket connection opened successfully.");
             vscode.window.showInformationMessage("WebSocket connected to Python server.");
-            ws!.send("Hello from VS Code!");
             // Now that WebSocket is connected, register commands
             registerCommands(context, ws!);
         };
@@ -301,7 +522,7 @@ async function connectWebSocket(context: vscode.ExtensionContext) {
             attempts++;
         };
 
-        setupFileAndLineChangeListeners();
+        //setupFileAndLineChangeListeners();
     };
 
     attemptConnection();
