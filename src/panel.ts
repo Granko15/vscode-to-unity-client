@@ -10,9 +10,11 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
     private ws: WebSocket | null = null;
     private defaultThreadId: string = "thread_YZAl1BjjrI8giA6OkixuG3Y2";
     private currentThreadId: string | null = null;
+    private context: vscode.ExtensionContext; // Declare the context property
 
-
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(private readonly _extensionUri: vscode.Uri, context: vscode.ExtensionContext) {
+        this.context = context;
+    }
 
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this._view = webviewView;
@@ -28,12 +30,12 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
                 this.sendPromptToPython(message.prompt);
             }
         });
-        this.connectWebSocket();
-        this.sendContextToPython(); // Odoslanie kontextu pri otvorení webview
-        this.loadChatHistory(); // Načítanie histórie chatu pri zobrazení webview
+        this.connectWebSocket(this.context);
+        this.sendContextToPython(this.context); // Odoslanie kontextu pri otvorení webview
+        this.loadChatHistory(this.context); // Načítanie histórie chatu pri zobrazení webview
     }
 
-    private connectWebSocket() {
+    private connectWebSocket(context: vscode.ExtensionContext) {
         this.ws = new WebSocket("ws://localhost:7777");
 
         this.ws.onopen = () => {
@@ -48,7 +50,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
             try {
                 const data = JSON.parse(event.data.toString());
                 if (data.command === "SwitchToThisCodeboxInAIAssistant") {
-                    this.handleSwitchToCodebox(data);
+                    this.handleSwitchToCodebox(context, data);
                 }
             } catch (e) {
                 console.error("Error parsing message: ", e);
@@ -61,11 +63,11 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
 
         this.ws.onclose = () => {
             console.warn("WebSocket closed in CopilotViewProvider. Retrying...");
-            setTimeout(() => this.connectWebSocket(), 1000);
+            setTimeout(() => this.connectWebSocket(context), 1000);
         };
     }
 
-    private async handleSwitchToCodebox(message: any) {
+    private async handleSwitchToCodebox(context: vscode.ExtensionContext, message: any) {
         if (this._view) {
             const foundThreadId = this.findThreadId(message.className, message.filePath);
 
@@ -106,7 +108,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
                 vscode.window.showTextDocument(document);
             });
 
-            this.loadChatHistory(); // Načítanie histórie chatu po prepnutí na nový kód
+            this.loadChatHistory(context); // Načítanie histórie chatu po prepnutí na nový kód
         }
     }
 
@@ -170,13 +172,13 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    private async sendContextToPython() {
+    private async sendContextToPython(context: vscode.ExtensionContext) {
       try {
           const scriptPath = path.join(this._extensionUri.fsPath, "src", "send_context_to_assistant.py");
           const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath || "";
           const args = [this.currentThreadId || "", workspacePath];
           console.log("Python script args:", args);
-          const result = await this.executePythonScript(scriptPath, args);
+          const result = await this.executePythonScriptInVenv(context, scriptPath, args);
           if (this._view) {
               this._view.webview.postMessage({
                   command: "receiveResponse",
@@ -192,6 +194,39 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           }
       }
     }
+
+    private executePythonScriptInVenv(context: vscode.ExtensionContext, scriptPath: string, args: string[]): Promise<string> {
+        return new Promise((resolve, reject) => {
+            let pythonCommand = path.join(context.extensionPath, 'python', 'venv', 'Scripts', 'python.exe');
+    
+            const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
+    
+            const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
+            outputChannel.show(true);
+    
+            pyProcess.stdout.on('data', (data: Buffer) => {
+                outputChannel.appendLine(`${data.toString()}`);
+                resolve(data.toString());
+            });
+    
+            pyProcess.stderr.on('data', (data: Buffer) => {
+                outputChannel.appendLine(`[Python ERROR]: ${data.toString()}`);
+            });
+    
+            pyProcess.on('close', (code) => {
+                if (code === 0) {
+                    resolve("Python script finished successfully");
+                } else {
+                    reject(`Python script exited with code ${code}`);
+                }
+            });
+    
+            pyProcess.on('error', (err) => {
+                reject(`Failed to start Python script: ${err.message}`);
+            });
+        });
+    }
+    
 
     private executePythonScript(scriptPath: string, args: string[]): Promise<string> {
       return new Promise((resolve, reject) => {
@@ -243,7 +278,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
       });
     }
 
-    private async loadChatHistory() {
+    private async loadChatHistory(context: vscode.ExtensionContext) {
       if (this._view) {
         if (!this.currentThreadId) {
             this.currentThreadId = this.defaultThreadId;
@@ -251,7 +286,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           try {
               const scriptPath = path.join(this._extensionUri.fsPath, "src", "get_messages.py");
               const args = [this.currentThreadId];
-              const result = await this.executePythonScript(scriptPath, args);
+              const result = await this.executePythonScriptInVenv(context, scriptPath, args);
 
               if (result) {
                   try {
