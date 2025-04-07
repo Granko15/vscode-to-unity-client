@@ -21,14 +21,16 @@ export function activate(context: vscode.ExtensionContext) {
     setTimeout(() => {
         connectWebSocket(context);
     }, 3000);
-
-    const provider = new CopilotViewProvider(context.extensionUri);
-    context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(
-        CopilotViewProvider.viewType,
-        provider
-      )
-    );
+    
+    setTimeout(() => {
+        const provider = new CopilotViewProvider(context.extensionUri);
+        context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            CopilotViewProvider.viewType,
+            provider
+        )
+        );
+    }, 1000);    
 
 }
 

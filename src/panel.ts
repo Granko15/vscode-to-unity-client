@@ -12,7 +12,9 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
     private currentThreadId: string | null = null;
 
 
-    constructor(private readonly _extensionUri: vscode.Uri) {}
+    constructor(private readonly _extensionUri: vscode.Uri) {
+        this.connectWebSocket();
+    }
 
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this._view = webviewView;
@@ -28,7 +30,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
                 this.sendPromptToPython(message.prompt);
             }
         });
-        this.connectWebSocket();
+        
         this.sendContextToPython(); // Odoslanie kontextu pri otvorení webview
         this.loadChatHistory(); // Načítanie histórie chatu pri zobrazení webview
     }
