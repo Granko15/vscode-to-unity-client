@@ -26,15 +26,6 @@ This document outlines the steps to install and run the VSCode to Unity client e
     npm run compile
     ```
 
-### Running the Extension for Debugging
-
-To debug the extension within Visual Studio Code:
-
-1.  Open the VSCode to Unity client extension project in Visual Studio Code.
-2.  Navigate to the "Run and Debug" view (usually the fifth icon in the Activity Bar on the side).
-3.  You should see a debug configuration named "Debug Extension".
-4.  Click the "Start Debugging" button (the green play icon) next to the "Debug Extension" configuration. This will launch a new VS Code window with your extension running in debug mode.
-
 ### Setting up the Python Virtual Environment
 
 The Python server component of the extension requires a virtual environment. Follow these steps to create and activate it:
@@ -74,3 +65,12 @@ The Python server component of the extension requires a virtual environment. Fol
     ```
 
 **Note:** Ensure that the Python server script (`server.py` or similar) is executed within this activated virtual environment to use the installed dependencies.
+
+### Running the Extension for Debugging
+
+To debug the extension within Visual Studio Code:
+
+1.  Open the VSCode to Unity client extension project in Visual Studio Code.
+2.  Navigate to the "Run and Debug" view (usually the fifth icon in the Activity Bar on the side).
+3.  You should see a debug configuration named "Debug Extension".
+4.  Click the "Start Debugging" button (the green play icon) next to the "Debug Extension" configuration. This will launch a new VS Code window with your extension running in debug mode.
