@@ -4,7 +4,7 @@ import json
 
 connected_clients = set()
 
-async def handler(websocket, path):
+async def handler(websocket):
     client_ip = websocket.remote_address
     print(f"Client connected: {client_ip}")
     connected_clients.add(websocket)

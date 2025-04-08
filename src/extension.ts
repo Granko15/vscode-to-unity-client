@@ -56,6 +56,7 @@ function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<
         pyProcess.stdout.on('data', (data: Buffer) => {
             outputChannel.appendLine(`${data.toString()}`);
             resolve(data.toString());
+            resolve(data.toString());
         });
 
         pyProcess.stderr.on('data', (data: Buffer) => {
