@@ -130,7 +130,7 @@ function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     console.log(`Analyzing project directory: ${currentFolder}`);
     console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
-    executePythonScriptInVenv(scriptPath, args)
+    executePythonScript(scriptPath, args)
         .then(() => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
             
@@ -312,7 +312,7 @@ interface ExtractedMessage {
 async function getChatHistory(threadId: string): Promise<ExtractedMessage[]> {
     const scriptPath = path.join(__dirname, "../src/get_messages.py");
     try {
-        const chatJsonContent = await executePythonScriptInVenv(scriptPath, [threadId]);
+        const chatJsonContent = await executePythonScript(scriptPath, [threadId]);
         console.log(`Raw Python script output for threadId ${threadId}: ${chatJsonContent}`); // Log raw output
 
         const cleanedJsonContent = chatJsonContent.trim();
