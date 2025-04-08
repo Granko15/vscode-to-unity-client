@@ -8,6 +8,7 @@ import { FineTuningJobEventsPage } from "openai/resources/fine-tuning/index.mjs"
 
 // WebSocket instance
 let ws: WebSocket | null = null;
+let provider: CopilotViewProvider | null = null;
 
 const SECRET_KEY = "openai-api-key";
 
@@ -23,7 +24,7 @@ export function activate(context: vscode.ExtensionContext) {
     }, 3000);
     
     setTimeout(() => {
-        const provider = new CopilotViewProvider(context.extensionUri);
+        provider = new CopilotViewProvider(context.extensionUri);
         context.subscriptions.push(
         vscode.window.registerWebviewViewProvider(
             CopilotViewProvider.viewType,
@@ -43,18 +44,18 @@ export function deactivate() {
 
 function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-        //let pythonCommand: string = process.platform === 'win32' ? 'python' : 'python3';
-        
-        let pythonCommand = path.join(__dirname, '../python/Scripts/python.exe');
+        let pythonCommand = path.join(__dirname, '../python/venv/Scripts/python.exe');
 
-        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
+        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args], {
+            cwd: path.dirname(scriptPath)
+        });
 
         const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
         outputChannel.show(true);
 
         pyProcess.stdout.on('data', (data: Buffer) => {
             outputChannel.appendLine(`${data.toString()}`);
-            resolve(data.toString()); // Resolve the promise with the output data
+            resolve(data.toString());
         });
 
         pyProcess.stderr.on('data', (data: Buffer) => {
@@ -63,18 +64,20 @@ function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<
 
         pyProcess.on('close', (code) => {
             if (code === 0) {
+                outputChannel.appendLine(`[Python]: Script finished successfully`);
                 resolve("Python script finished successfully");
             } else {
+                outputChannel.appendLine(`[Python ERROR]: Script exited with code ${code}`);
                 reject(`Python script exited with code ${code}`);
             }
         });
 
         pyProcess.on('error', (err) => {
+            outputChannel.appendLine(`[Python ERROR]: ${err.message}`);
             reject(`Failed to start Python script: ${err.message}`);
         });
     });
 }
-
 
 // Function to execute Python script
 function executePythonScript(scriptPath: string, args: string[]): Promise<string> {
@@ -126,7 +129,7 @@ function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     console.log(`Analyzing project directory: ${currentFolder}`);
     console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
-    executePythonScript(scriptPath, args)
+    executePythonScriptInVenv(scriptPath, args)
         .then(() => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
             
@@ -474,7 +477,7 @@ async function startPythonServer() {
 
     try {
         console.log("Starting Python server...");
-        await executePythonScript(pythonScriptPath, []);
+        executePythonScript(pythonScriptPath, []);
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
         console.error(`Failed to start Python server: ${error}`);
@@ -508,6 +511,8 @@ async function connectWebSocket(context: vscode.ExtensionContext) {
                 const data = JSON.parse(event.data.toString());
                 if (data.command === "JumpToClass") {
                     handleJumpToClassMessage(data);
+                }else if(data.command === "SwitchToThisCodeboxInAIAssistant") {
+                    provider!.handleSwitchToCodebox(data);
                 }
             } catch (e) {
                 console.error("Error parsing message: ", e);

@@ -1,20 +1,16 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as child_process from "child_process";
-import WebSocket from "ws";
 import * as fs from "fs";
 
 export class CopilotViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "myCopilotView";
     private _view?: vscode.WebviewView;
-    private ws: WebSocket | null = null;
     private defaultThreadId: string = "thread_YZAl1BjjrI8giA6OkixuG3Y2";
     private currentThreadId: string | null = null;
 
 
-    constructor(private readonly _extensionUri: vscode.Uri) {
-        this.connectWebSocket();
-    }
+    constructor(private readonly _extensionUri: vscode.Uri) {}
 
     public resolveWebviewView(webviewView: vscode.WebviewView): void {
         this._view = webviewView;
@@ -35,39 +31,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
         this.loadChatHistory(); // Načítanie histórie chatu pri zobrazení webview
     }
 
-    private connectWebSocket() {
-        this.ws = new WebSocket("ws://localhost:7777");
-
-        this.ws.onopen = () => {
-            console.log("WebSocket connection opened in CopilotViewProvider.");
-            if (this.ws) {
-                this.ws.send("Hello from CopilotViewProvider!");
-            }
-        };
-
-        this.ws.onmessage = (event) => {
-            console.log(`Received message in CopilotViewProvider: ${event.data}`);
-            try {
-                const data = JSON.parse(event.data.toString());
-                if (data.command === "SwitchToThisCodeboxInAIAssistant") {
-                    this.handleSwitchToCodebox(data);
-                }
-            } catch (e) {
-                console.error("Error parsing message: ", e);
-            }
-        };
-
-        this.ws.onerror = (error) => {
-            console.error("WebSocket error in CopilotViewProvider:", error);
-        };
-
-        this.ws.onclose = () => {
-            console.warn("WebSocket closed in CopilotViewProvider. Retrying...");
-            setTimeout(() => this.connectWebSocket(), 1000);
-        };
-    }
-
-    private async handleSwitchToCodebox(message: any) {
+    public async handleSwitchToCodebox(message: any) {
         if (this._view) {
             const foundThreadId = this.findThreadId(message.className, message.filePath);
 
@@ -142,7 +106,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath || "";
           const args = [className, filePath, workspacePath];
           console.log("Python script args:", args);
-          const newThreadId = await this.executePythonScript(scriptPath, args);
+          const newThreadId = await this.executePythonScriptInVenv(scriptPath, args);
           this.currentThreadId = newThreadId.trim(); // Uloženie ID vlákna do currentThreadId
           console.log("New thread ID:", this.currentThreadId);
       } catch (error) {
@@ -155,7 +119,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const scriptPath = path.join(this._extensionUri.fsPath, "src", "send_message.py");
           const args = [prompt, this.currentThreadId || ""];
           console.log("Python script args:", args);
-          const result = await this.executePythonScript(scriptPath, args);
+          const result = await this.executePythonScriptInVenv(scriptPath, args);
           if (this._view) {
               this._view.webview.postMessage({
                   command: "receiveResponse",
@@ -178,7 +142,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath || "";
           const args = [this.currentThreadId || "", workspacePath];
           console.log("Python script args:", args);
-          const result = await this.executePythonScript(scriptPath, args);
+          const result = await this.executePythonScriptInVenv(scriptPath, args);
           if (this._view) {
               this._view.webview.postMessage({
                   command: "receiveResponse",
@@ -195,11 +159,11 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    private executePythonScript(scriptPath: string, args: string[]): Promise<string> {
+    private executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<string> {
       return new Promise((resolve, reject) => {
           let pythonCommand: string;
           if (process.platform === "win32") {
-              pythonCommand = path.join(this._extensionUri.fsPath, "python", "Scripts", "python.exe");
+              pythonCommand = path.join(this._extensionUri.fsPath, "python", "venv", "Scripts", "python.exe");
           } else {
               pythonCommand = path.join(this._extensionUri.fsPath, "python", "bin", "python");
           }
@@ -253,7 +217,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           try {
               const scriptPath = path.join(this._extensionUri.fsPath, "src", "get_messages.py");
               const args = [this.currentThreadId];
-              const result = await this.executePythonScript(scriptPath, args);
+              const result = await this.executePythonScriptInVenv(scriptPath, args);
 
               if (result) {
                   try {
