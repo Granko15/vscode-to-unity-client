@@ -80,38 +80,6 @@ function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<
     });
 }
 
-// Function to execute Python script
-function executePythonScript(scriptPath: string, args: string[]): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const pythonCommand: string = process.platform === 'win32' ? 'python' : 'python3';
-
-        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
-
-        const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
-        outputChannel.show(true);
-
-        pyProcess.stdout.on('data', (data: Buffer) => {
-            outputChannel.appendLine(`[Python]: ${data.toString()}`);
-        });
-
-        pyProcess.stderr.on('data', (data: Buffer) => {
-            outputChannel.appendLine(`[Python ERROR]: ${data.toString()}`);
-        });
-
-        pyProcess.on('close', (code) => {
-            if (code === 0) {
-                resolve("Python script finished successfully");
-            } else {
-                reject(`Python script exited with code ${code}`);
-            }
-        });
-
-        pyProcess.on('error', (err) => {
-            reject(`Failed to start Python script: ${err.message}`);
-        });
-    });
-}
-
 // Function to run the Python code analyzer
 function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -130,7 +98,7 @@ function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     console.log(`Analyzing project directory: ${currentFolder}`);
     console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
-    executePythonScript(scriptPath, args)
+    executePythonScriptInVenv(scriptPath, args)
         .then(() => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
             
@@ -312,7 +280,7 @@ interface ExtractedMessage {
 async function getChatHistory(threadId: string): Promise<ExtractedMessage[]> {
     const scriptPath = path.join(__dirname, "../src/get_messages.py");
     try {
-        const chatJsonContent = await executePythonScript(scriptPath, [threadId]);
+        const chatJsonContent = await executePythonScriptInVenv(scriptPath, [threadId]);
         console.log(`Raw Python script output for threadId ${threadId}: ${chatJsonContent}`); // Log raw output
 
         const cleanedJsonContent = chatJsonContent.trim();
@@ -478,7 +446,7 @@ async function startPythonServer() {
 
     try {
         console.log("Starting Python server...");
-        executePythonScript(pythonScriptPath, []);
+        executePythonScriptInVenv(pythonScriptPath, []);
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
         console.error(`Failed to start Python server: ${error}`);

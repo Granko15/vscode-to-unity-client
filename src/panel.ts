@@ -106,7 +106,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath || "";
           const args = [className, filePath, workspacePath];
           console.log("Python script args:", args);
-          const newThreadId = await this.executePythonScript(scriptPath, args);
+          const newThreadId = await this.executePythonScriptInVenv(scriptPath, args);
           this.currentThreadId = newThreadId.trim(); // Uloženie ID vlákna do currentThreadId
           console.log("New thread ID:", this.currentThreadId);
       } catch (error) {
@@ -119,7 +119,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const scriptPath = path.join(this._extensionUri.fsPath, "src", "send_message.py");
           const args = [prompt, this.currentThreadId || ""];
           console.log("Python script args:", args);
-          const result = await this.executePythonScript(scriptPath, args);
+          const result = await this.executePythonScriptInVenv(scriptPath, args);
           if (this._view) {
               this._view.webview.postMessage({
                   command: "receiveResponse",
@@ -142,7 +142,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           const workspacePath = vscode.workspace.workspaceFolders?.[0].uri.fsPath || "";
           const args = [this.currentThreadId || "", workspacePath];
           console.log("Python script args:", args);
-          const result = await this.executePythonScript(scriptPath, args);
+          const result = await this.executePythonScriptInVenv(scriptPath, args);
           if (this._view) {
               this._view.webview.postMessage({
                   command: "receiveResponse",
@@ -159,63 +159,10 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
       }
     }
 
-    private executePythonScript(scriptPath: string, args: string[]): Promise<string> {
-        return new Promise((resolve, reject) => {
-            let pythonCommand = path.join(__dirname, '../.venv/Scripts/python.exe');
-    
-            const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
-            let output = "";
-
-            const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
-            outputChannel.show(true);
-    
-            pyProcess.stdout.on("data", (data: Buffer) => {
-                output += data.toString();
-                if (this._view) {
-                    this._view.webview.postMessage({
-                        command: "receiveResponse",
-                        response: data.toString(),
-                    });
-                }
-            });
-    
-            pyProcess.stderr.on("data", (data: Buffer) => {
-                const error = data.toString();
-                if (this._view) {
-                    this._view.webview.postMessage({
-                        command: "receiveResponse",
-                        response: `Error: ${error}`,
-                    });
-                }
-                reject(error); // Reject the promise on error
-            });
-    
-            pyProcess.on("close", (code) => {
-                if (scriptPath.endsWith("send_message.py")) {
-                  return;
-                }
-                if (code !== 0) {
-                    reject(`Python script exited with code ${code}`);
-                } else {
-                    resolve(output); // Resolve the promise with the output
-                }
-            });
-    
-            pyProcess.on("error", (err) => {
-                reject(`Failed to start Python script: ${err.message}`);
-            });
-        });
-    }
-
     private executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<string> {
       return new Promise((resolve, reject) => {
-          let pythonCommand: string;
-          if (process.platform === "win32") {
-              pythonCommand = path.join(this._extensionUri.fsPath, "python", "venv", "Scripts", "python.exe");
-          } else {
-              pythonCommand = path.join(this._extensionUri.fsPath, "python", "bin", "python");
-          }
-  
+          let pythonCommand = path.join(__dirname, '../python/venv/Scripts/python.exe');
+
           const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
           let output = "";
   
@@ -265,7 +212,7 @@ export class CopilotViewProvider implements vscode.WebviewViewProvider {
           try {
               const scriptPath = path.join(this._extensionUri.fsPath, "src", "get_messages.py");
               const args = [this.currentThreadId];
-              const result = await this.executePythonScript(scriptPath, args);
+              const result = await this.executePythonScriptInVenv(scriptPath, args);
 
               if (result) {
                   try {
