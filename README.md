@@ -1,71 +1,76 @@
-# vscode-to-unity-client README
+## Installation and Running Instructions
 
-This is the README for your extension "vscode-to-unity-client". After writing up a brief description, we recommend including the following sections.
+This document outlines the steps to install and run the VSCode to Unity client extension.
 
-## Features
+### Prerequisites
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+* **Node.js:** Ensure you have Node.js version **greater than 19** installed on your system. You can check your Node.js version by running `node -v` in your terminal.
 
-For example if there is an image subfolder under your extension project workspace:
+### Installation Steps
 
-\!\[feature X\]\(images/feature-x.png\)
+1.  **Navigate to the Extension Directory:** Open your terminal or command prompt and navigate to the root directory of the VSCode to Unity client extension project.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+    ```bash
+    cd vscode-to-unity-client
+    ```
 
-## Requirements
+2.  **Install Node.js Dependencies:** Run the following command to install the necessary Node.js modules:
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+    ```bash
+    npm install
+    ```
 
-## Extension Settings
+3.  **Compile TypeScript:** Execute the following command to compile the TypeScript code into JavaScript:
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
+    ```bash
+    npm run compile
+    ```
 
-For example:
+### Setting up the Python Virtual Environment
 
-This extension contributes the following settings:
+The Python server component of the extension requires a virtual environment. Follow these steps to create and activate it:
 
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
+1.  **Navigate to the Python Directory:** In your terminal or command prompt, navigate to the `python` subdirectory within the `vscode-to-unity-client` directory:
 
-## Known Issues
+    ```bash
+    cd vscode-to-unity-client/python
+    ```
 
-Calling out known issues can help limit users opening duplicate issues against your extension.
+2.  **Create the Virtual Environment:** Create a new virtual environment named `venv` using the following command:
 
-## Release Notes
+    ```bash
+    python -m venv venv
+    ```
 
-Users appreciate release notes as you update your extension.
+3.  **Activate the Virtual Environment:**
 
-### 1.0.0
+    * **On Windows:** Run the following command:
 
-Initial release of ...
+        ```bash
+        .\venv\Scripts\activate
+        ```
 
-### 1.0.1
+    * **On macOS and Linux:** Run the following command:
 
-Fixed issue #.
+        ```bash
+        source venv/bin/activate
+        ```
 
-### 1.1.0
+    (You should see `(venv)` at the beginning of your terminal prompt, indicating that the virtual environment is active.)
 
-Added features X, Y, and Z.
+4.  **Install Python Dependencies:** With the virtual environment activated, install the required Python packages from the `requirements.txt` file:
 
----
+    ```bash
+    (venv) pip install -r requirements.txt
+    ```
 
-## Following extension guidelines
+**Note:** Ensure that the Python server script (`server.py` or similar) is executed within this activated virtual environment to use the installed dependencies.
 
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
+### Running the Extension for Debugging
 
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
+To debug the extension within Visual Studio Code:
 
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+1.  Open the VSCode to Unity client extension project in Visual Studio Code.
+2.  Navigate to the "Run and Debug" view (usually the fifth icon in the Activity Bar on the side).
+3.  You should see a debug configuration named "Debug Extension".
+4.  Click the "Start Debugging" button (the green play icon) next to the "Debug Extension" configuration. This will launch a new VS Code window with your extension running in debug mode.
