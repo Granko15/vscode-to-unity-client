@@ -7,7 +7,8 @@ import { CopilotViewProvider } from "./panel";
 import { FineTuningJobEventsPage } from "openai/resources/fine-tuning/index.mjs";
 
 // WebSocket instance
-let ws: WebSocket;
+let ws: WebSocket | null = null;
+let provider: CopilotViewProvider | null = null;
 
 const SECRET_KEY = "openai-api-key";
 
@@ -15,22 +16,22 @@ const SECRET_KEY = "openai-api-key";
 export function activate(context: vscode.ExtensionContext) {
     console.log("VSCode to Unity Data Transfer Extension activated.");
 
-    startPythonServer(context);
+    startPythonServer();
 
     // Wait for 3 seconds before attempting WebSocket connection
     setTimeout(() => {
-        connectWebSocket();
+        connectWebSocket(context);
     }, 3000);
-
-    const provider = new CopilotViewProvider(context.extensionUri, context);
-    context.subscriptions.push(
-      vscode.window.registerWebviewViewProvider(
-        CopilotViewProvider.viewType,
-        provider
-      )
-    );
-
-    registerCommands(context)
+    
+    setTimeout(() => {
+        provider = new CopilotViewProvider(context.extensionUri);
+        context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(
+            CopilotViewProvider.viewType,
+            provider
+        )
+        );
+    }, 1000);    
 
 }
 
@@ -41,17 +42,20 @@ export function deactivate() {
     }
 }
 
-function executePythonScriptInVenv(context: vscode.ExtensionContext, scriptPath: string, args: string[]): Promise<string> {
+function executePythonScriptInVenv(scriptPath: string, args: string[]): Promise<string> {
     return new Promise((resolve, reject) => {
-        let pythonCommand = path.join(context.extensionPath, 'python', 'venv', 'Scripts', 'python.exe');
+        let pythonCommand = path.join(__dirname, '../python/venv/Scripts/python.exe');
 
-        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
+        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args], {
+            cwd: path.dirname(scriptPath)
+        });
 
         const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
         outputChannel.show(true);
 
         pyProcess.stdout.on('data', (data: Buffer) => {
             outputChannel.appendLine(`${data.toString()}`);
+            resolve(data.toString());
             resolve(data.toString());
         });
 
@@ -61,53 +65,23 @@ function executePythonScriptInVenv(context: vscode.ExtensionContext, scriptPath:
 
         pyProcess.on('close', (code) => {
             if (code === 0) {
+                outputChannel.appendLine(`[Python]: Script finished successfully`);
                 resolve("Python script finished successfully");
             } else {
+                outputChannel.appendLine(`[Python ERROR]: Script exited with code ${code}`);
                 reject(`Python script exited with code ${code}`);
             }
         });
 
         pyProcess.on('error', (err) => {
-            reject(`Failed to start Python script: ${err.message}`);
-        });
-    });
-}
-
-
-// Function to execute Python script
-function executePythonScript(scriptPath: string, args: string[]): Promise<string> {
-    return new Promise((resolve, reject) => {
-        const pythonCommand: string = process.platform === 'win32' ? 'python' : 'python3';
-
-        const pyProcess = child_process.spawn(pythonCommand, [scriptPath, ...args]);
-
-        const outputChannel = vscode.window.createOutputChannel("Python Server Logs");
-        outputChannel.show(true);
-
-        pyProcess.stdout.on('data', (data: Buffer) => {
-            outputChannel.appendLine(`[Python]: ${data.toString()}`);
-        });
-
-        pyProcess.stderr.on('data', (data: Buffer) => {
-            outputChannel.appendLine(`[Python ERROR]: ${data.toString()}`);
-        });
-
-        pyProcess.on('close', (code) => {
-            if (code === 0) {
-                resolve("Python script finished successfully");
-            } else {
-                reject(`Python script exited with code ${code}`);
-            }
-        });
-
-        pyProcess.on('error', (err) => {
+            outputChannel.appendLine(`[Python ERROR]: ${err.message}`);
             reject(`Failed to start Python script: ${err.message}`);
         });
     });
 }
 
 // Function to run the Python code analyzer
-function runPythonCodeAnalyzer(context: vscode.ExtensionContext, scriptName: string) {
+function runPythonCodeAnalyzer(scriptName: string, ws?: WebSocket) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
         vscode.window.showErrorMessage("No folder is open. Please open a folder in VS Code.");
@@ -124,11 +98,11 @@ function runPythonCodeAnalyzer(context: vscode.ExtensionContext, scriptName: str
     console.log(`Analyzing project directory: ${currentFolder}`);
     console.log(`Output will be saved in: ${outputBaseName}.json and ${outputBaseName}.puml`);
 
-    executePythonScriptInVenv(context, scriptPath, args)
+    executePythonScriptInVenv(scriptPath, args)
         .then(() => {
             vscode.window.showInformationMessage("Python Code Analyzer completed successfully.");
             
-            if (ws.readyState !== WebSocket.OPEN) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
                 vscode.window.showErrorMessage("WebSocket is not connected.");
                 return;
             }
@@ -241,7 +215,7 @@ function sendCodeboxThreadsViaWebSocket() {
     }
 }
 
-async function sendChatHistoryOfNonDummyThreads(context: vscode.ExtensionContext) {
+async function sendChatHistoryOfNonDummyThreads(ws: WebSocket) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
         console.error("No workspace folder found.");
@@ -263,7 +237,7 @@ async function sendChatHistoryOfNonDummyThreads(context: vscode.ExtensionContext
                 const threadInfo = codeboxThreadsData[className];
                 if (threadInfo.thread_id !== "dummy_thread") {
                     try {
-                        const chatHistory = await getChatHistory(context, threadInfo.thread_id);
+                        const chatHistory = await getChatHistory(threadInfo.thread_id);
                         chatHistoryData.push({
                             className: className,
                             filePath: threadInfo.filePath,
@@ -303,10 +277,10 @@ interface ExtractedMessage {
     text: string | null;
 }
 
-async function getChatHistory(context: vscode.ExtensionContext, threadId: string): Promise<ExtractedMessage[]> {
+async function getChatHistory(threadId: string): Promise<ExtractedMessage[]> {
     const scriptPath = path.join(__dirname, "../src/get_messages.py");
     try {
-        const chatJsonContent = await executePythonScriptInVenv(context, scriptPath, [threadId]);
+        const chatJsonContent = await executePythonScriptInVenv(scriptPath, [threadId]);
         console.log(`Raw Python script output for threadId ${threadId}: ${chatJsonContent}`); // Log raw output
 
         const cleanedJsonContent = chatJsonContent.trim();
@@ -358,9 +332,9 @@ function getClassNameAtCursor(editor: vscode.TextEditor, cursorPosition: vscode.
     return null; // Return null if no class is found
 }
 
-export function handleDisplayCodeBox() {
+export function handleDisplayCodeBox(ws: WebSocket) {
     return () => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
             vscode.window.showErrorMessage("WebSocket is not connected.");
             return;
         }
@@ -394,9 +368,9 @@ export function handleDisplayCodeBox() {
     };
 }
 
-export function handleHideCodeBox() {
+export function handleHideCodeBox(ws: WebSocket) {
     return () => {
-        if (ws.readyState !== WebSocket.OPEN) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
             vscode.window.showErrorMessage("WebSocket is not connected.");
             return;
         }
@@ -431,7 +405,7 @@ export function handleHideCodeBox() {
 }
 
 // Command to run the Python analyzer script
-export function handleRunPythonAnalyzer(context: vscode.ExtensionContext) {
+export function handleRunPythonAnalyzer(ws?: WebSocket) {
     return async () => {
         const workspaceFolders = vscode.workspace.workspaceFolders;
         if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -443,12 +417,12 @@ export function handleRunPythonAnalyzer(context: vscode.ExtensionContext) {
         const diagramJsonPath = path.join(currentFolder, "diagram.json");
 
         try {
-            runPythonCodeAnalyzer(context, "diagramGenerator.py");
+            runPythonCodeAnalyzer("diagramGenerator.py", ws);
             setTimeout(() => {
                 createCodeboxThreadsJson(diagramJsonPath, currentFolder);
             }, 2000);
             setTimeout(() => {
-                sendChatHistoryOfNonDummyThreads(context);
+                sendChatHistoryOfNonDummyThreads(ws!);
             }, 2000);
             
         } catch (error) {
@@ -458,21 +432,21 @@ export function handleRunPythonAnalyzer(context: vscode.ExtensionContext) {
     };
 }
 // Register all commands
-export function registerCommands(context: vscode.ExtensionContext) {
+export function registerCommands(context: vscode.ExtensionContext, ws: WebSocket) {
     context.subscriptions.push(
-        vscode.commands.registerCommand("vsc-to-unity-data-transfer.displayCodeBox", handleDisplayCodeBox()),
-        vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer(context)),
-        vscode.commands.registerCommand("vsc-to-unity-data-transfer.hideCodeBox", handleHideCodeBox()) // Register the hide code box command
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.displayCodeBox", handleDisplayCodeBox(ws)),
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.runPythonCodeAnalyzer", handleRunPythonAnalyzer(ws)),
+        vscode.commands.registerCommand("vsc-to-unity-data-transfer.hideCodeBox", handleHideCodeBox(ws)) // Register the hide code box command
     )
 }
 
 // Function to start Python server
-async function startPythonServer(context: vscode.ExtensionContext) {
+async function startPythonServer() {
     const pythonScriptPath = path.join(__dirname, "../src/networking/server.py");
 
     try {
         console.log("Starting Python server...");
-        await executePythonScriptInVenv(context, pythonScriptPath, []);
+        executePythonScriptInVenv(pythonScriptPath, []);
     } catch (error) {
         vscode.window.showErrorMessage(`Failed to start Python server: ${error}`);
         console.error(`Failed to start Python server: ${error}`);
@@ -480,7 +454,7 @@ async function startPythonServer(context: vscode.ExtensionContext) {
 }
 
 // Function to connect to WebSocket server
-async function connectWebSocket() {
+async function connectWebSocket(context: vscode.ExtensionContext) {
     const maxAttempts = 10;
     let attempts = 0;
     const interval = 1000; // 1 second
@@ -496,6 +470,8 @@ async function connectWebSocket() {
         ws.onopen = () => {
             console.log("WebSocket connection opened successfully.");
             vscode.window.showInformationMessage("WebSocket connected to Python server.");
+            // Now that WebSocket is connected, register commands
+            registerCommands(context, ws!);
         };
 
         ws.onmessage = (event) => {
@@ -504,6 +480,8 @@ async function connectWebSocket() {
                 const data = JSON.parse(event.data.toString());
                 if (data.command === "JumpToClass") {
                     handleJumpToClassMessage(data);
+                }else if(data.command === "SwitchToThisCodeboxInAIAssistant") {
+                    provider!.handleSwitchToCodebox(data);
                 }
             } catch (e) {
                 console.error("Error parsing message: ", e);

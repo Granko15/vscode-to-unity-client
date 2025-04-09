@@ -1,0 +1,71 @@
+[33mcommit f71f2addc35eefed23993beda1e51ab0753609a4[m[33m ([m[1;36mHEAD -> [m[1;32mworkingBranch[m[33m, [m[1;31morigin/workingBranch[m[33m, [m[1;31morigin/master[m[33m, [m[1;32mmaster[m[33m)[m
+Author: Martin Stanček <martin.stancek123@gmail.com>
+Date:   Sun Apr 6 17:14:36 2025 +0200
+
+    Edited python venv execute command, websockets etc
+
+[33mcommit a55fefd1710beef0d257a7bb16de96900f87ddcd[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Thu Apr 3 01:42:06 2025 +0200
+
+    added open ai history, thread management, specific codebox  focus. chat history to be sent to unity
+
+[33mcommit a58a9535e85f28235e9c4f82cfaa115e856b36ff[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Sat Mar 29 21:36:50 2025 +0100
+
+    AI assistant added to activity bar, Jump to class from unity,
+
+[33mcommit 8574158e3767d39d046500cdcf328f9c3eb59837[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Tue Mar 18 19:16:49 2025 +0100
+
+    displaying/hiding codeboxes added, sending json with classes to server
+
+[33mcommit 41f86dfb8aeeed4df5a029ae2061b1ec0588b0c6[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Wed Mar 12 18:08:57 2025 +0100
+
+    sending commands to Unity client via server added
+
+[33mcommit 6f12ee6a2d45aed91ddd06028c650b867c7fbdca[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Tue Mar 11 21:08:14 2025 +0100
+
+    websocket added, project analysis saving output correctly, no api keys
+
+[33mcommit 6ce09ac3ed0689bf96a8ea222a81475ebe04b0c8[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Wed Dec 11 19:02:49 2024 +0100
+
+    OpenAI coding assistant added
+
+[33mcommit 1212cc913bb5474dc3ba32588a51db4497d8519e[m
+Author: Granko15 <matusgranec15@gmail.com>
+Date:   Mon Nov 25 14:11:15 2024 +0100
+
+    added line numbers, packages, correct uses relationship
+
+[33mcommit c33bc51267212332f3672ed77b76b446579ec176[m
+Author: Granko15 <matusgranec15@gmail.com>
+Date:   Mon Nov 25 11:41:03 2024 +0100
+
+    correct detection of uses
+
+[33mcommit 135045fb1819de3a124e1c591cb10370ccdbbe65[m
+Author: Granko15 <matusgranec15@gmail.com>
+Date:   Sun Nov 24 21:33:30 2024 +0100
+
+    duplicates in attributes removed
+
+[33mcommit 9cf82c94bfdea6a6e9bcd6a59a22e5cd6859e803[m
+Author: Granko15 <matusgranec15@gmail.com>
+Date:   Sun Nov 24 20:44:53 2024 +0100
+
+    qadded diagram generator and project analyzer
+
+[33mcommit eef2f281fd44a45adef7649ace94340e38abbea1[m
+Author: Granko15 <granko15@gmail.com>
+Date:   Mon Oct 7 01:23:29 2024 +0200
+
+    initial commit

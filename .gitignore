@@ -4,4 +4,6 @@ node_modules
 .vscode-test/
 *.vsix
 .env
-python/venv
+python/
+path/to/venv
+.DS_Store

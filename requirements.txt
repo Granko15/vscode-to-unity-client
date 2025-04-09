@@ -1,0 +1,4 @@
+websockets==13.0.01
+openai
+plantuml
+python-dotenv
