@@ -16,26 +16,6 @@
   "contributes": {
     "commands": [
       {
-        "command": "vsc-to-unity-data-transfer.basicAstExtractor",
-        "title": "Run Basic AST Extractor"
-      },
-      {
-        "command": "vsc-to-unity-data-transfer.varsConstsAstExtractor",
-        "title": "Run AST Extractor with Variables and Constants"
-      },
-      {
-        "command": "vsc-to-unity-data-transfer.detailedAstExtractor",
-        "title": "Run Detailed AST Extractor"
-      },
-      {
-        "command": "vsc-to-unity-data-transfer.basicAstroidExtractor",
-        "title": "Basic Astroid AST Extractor"
-      },
-      {
-        "command": "vsc-to-unity-data-transfer.detailedAstroidExtractor",
-        "title": "Detailed Astroid AST Extractor"
-      },
-      {
         "command": "vsc-to-unity-data-transfer.runPythonCodeAnalyzer",
         "title": "Run Python Code Analyzer"
       },
