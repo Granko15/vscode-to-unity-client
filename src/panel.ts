@@ -6,7 +6,7 @@ import * as fs from "fs";
 export class CopilotViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "myCopilotView";
     private _view?: vscode.WebviewView;
-    private defaultThreadId: string = "thread_YZAl1BjjrI8giA6OkixuG3Y2";
+    private defaultThreadId: string = "thread_CCbIjaGWjdx0eZ2nEdUwnurF";
     private currentThreadId: string | null = null;
 
 
